@@ -1,0 +1,7 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+config.vta_obj_root = "@VTA_BINARY_DIR@"
+config.vta_tools_dir = "@VTA_TOOLS_DIR@"
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+
+lit_config.load_config(config, "@VTA_SOURCE_DIR@/test/lit.cfg.py")

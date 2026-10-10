@@ -1,0 +1,26 @@
+//===- VTADialect.cpp - VTA dialect ---------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include "VTA/VTADialect.h"
+#include "VTA/VTAOps.h"
+
+using namespace mlir;
+using namespace mlir::vta;
+
+#include "VTA/VTAOpsDialect.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// VTA dialect.
+//===----------------------------------------------------------------------===//
+
+void VTADialect::initialize() {
+  addOperations<
+#define GET_OP_LIST
+#include "VTA/VTAOps.cpp.inc"
+      >();
+}

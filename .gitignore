@@ -1,0 +1,13 @@
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+run_sim
+.vscode/
+.idea/
+*.swp
+.DS_Store
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake

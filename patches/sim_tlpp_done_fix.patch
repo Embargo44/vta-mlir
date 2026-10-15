@@ -1,0 +1,11 @@
+--- a/sim_tlpp.cc
++++ b/sim_tlpp.cc
+@@ -150,7 +150,7 @@
+      * If instruction is FINISH set done flag.
+      * notification.
+      */
+-    done_ = GetOperationCode(insn) == VTA_OPCODE_FINISH;
++    if (GetOperationCode(insn) == VTA_OPCODE_FINISH) done_ = 1;
+ 
+     if (debug_) {
+       printf("this is thread for %s\n", GetCoreTypeName(core_type));

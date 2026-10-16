@@ -2,7 +2,7 @@ import os
 import lit.formats
 
 config.name = "VTA"
-config.test_format = lit.formats.ShTest(True)
+config.test_format = lit.formats.ShTest(False)
 
 config.suffixes = ['.mlir']
 

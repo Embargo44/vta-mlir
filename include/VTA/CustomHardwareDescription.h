@@ -58,6 +58,8 @@
 #define VTA_MEMOP_PAD_BIT_WIDTH        4
 #define VTA_ALUOP_IMM_BIT_WIDTH        16
 #define VTA_LOOP_ITER_WIDTH            14
+#define VTA_LOG_OUT_BUFF_DEPTH         15
+#define VTA_MUL_ARG_BIT_WIDTH          8
 
 //===----------------------------------------------------------------------===//
 // Instruction structs.
@@ -200,19 +202,28 @@ static constexpr size_t VTA_OUT_ELEM_BYTES = 16;
 
 // DRAM layout convention.
 // Source: project decision (not from TVM).
-// Consumed by: vta-translate.cpp (writing .mlir byte addresses),
+// Consumed by: vta-translate.cpp (writing .mlir addresses),
 //   run_sim.cpp (placing fixtures and translating dram_base), the .mlir
-//   test files (they write these byte addresses directly).
-static constexpr size_t VTA_REGION_SIZE   = 64 * 1024;
-static constexpr size_t VTA_INSN_OFFSET   = VTA_REGION_SIZE - 0x1000;  // 0xF000
+//   test files (they write these addresses directly).
+//
+// IMPORTANT: the data offsets below are ELEMENT indices, not byte offsets.
+// The simulator multiplies by the element size of the target memory to get
+// a byte address. The .mlir dram values use the same element indices.
+static constexpr size_t VTA_REGION_SIZE = 1024 * 1024;  // 1 MB
+static constexpr size_t VTA_INSN_OFFSET = VTA_REGION_SIZE - 0x1000;  // byte offset
 
-static constexpr size_t VTA_INPUT_SIZE    = 64;
+//Size of fixture data planted in run_sim, in bytes.
+static constexpr size_t VTA_INPUT_SIZE = 64;
 
-static constexpr size_t VTA_DATA_BASE = 0;
-static constexpr size_t VTA_UCODE_OFFSET  = VTA_DATA_BASE + 0;
-static constexpr size_t VTA_INPUT_OFFSET  = VTA_DATA_BASE + 8192;
-static constexpr size_t VTA_WEIGHT_OFFSET = VTA_DATA_BASE + 16384;
-static constexpr size_t VTA_OUTPUT_OFFSET = VTA_DATA_BASE + 32768;
+//Byte addresses these resolve to:
+//  ucode   elem 0     -> byte 0
+//  inp     elem 4096  -> byte 65536
+//  wgt     elem 512   -> byte 131072
+//  out     elem 16384 -> byte 262144
+static constexpr size_t VTA_UCODE_ELEM_OFFSET  = 0;
+static constexpr size_t VTA_INPUT_ELEM_OFFSET  = 4096;
+static constexpr size_t VTA_WEIGHT_ELEM_OFFSET = 512;
+static constexpr size_t VTA_OUTPUT_ELEM_OFFSET = 16384;
 
 
 

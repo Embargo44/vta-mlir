@@ -35,21 +35,42 @@ namespace mlir { namespace vta { namespace {
 //                                        //PASS DECLARATIONS
 //========================================================================================================================//
 
+
+
+
+
+//Checks program shape: one function, VTA ops inside it, one finish last, at least one load.
 struct CheckStructurePass : public CheckStructureBase<CheckStructurePass> {
     void runOnOperation() override;};    
 //========================================================================================================================//
+//Everything tied to the ucode op: first op is ucode, exactly one, UopEnd fits size.
+struct CheckUcodePass : public CheckUcodeBase<CheckUcodePass> {
+    void runOnOperation() override;
+};
+    
+
+
+//========================================================================================================================//
+//Inserts a vta.load that copies the ucode records into uop SRAM.
 struct TransformUcodeToLoadOpPass : public TransformUcodeToLoadOpBase<TransformUcodeToLoadOpPass> {
     void runOnOperation() override;}; 
 //========================================================================================================================//
-struct TransformGeneralStructurePass : public TransformGeneralStructureBase<TransformGeneralStructurePass> {
-    void runOnOperation() override;};
-//========================================================================================================================//
-struct CheckDependancyPass : public CheckDependancyBase<CheckDependancyPass> {
-    void runOnOperation() override;};      //(qst) - nested passes or separate ones?
-//========================================================================================================================//
+//Rewrites load_noop / store_noop into real zero-size LoadOp / StoreOp.
 struct TransformNoOpsPass : public TransformNoOpsBase<TransformNoOpsPass> {
     void runOnOperation() override;};
+
+
 //========================================================================================================================//
+//Scans the token queues for balance, dead flags, and unreachable finish.
+struct CheckDependancyPass : public CheckDependancyBase<CheckDependancyPass> {
+    void runOnOperation() override;};   
+
+//========================================================================================================================//
+//Merges duplicate ucodes, moves ucode to top of body, trims ops after finish.
+struct TransformGeneralStructurePass : public TransformGeneralStructureBase<TransformGeneralStructurePass> {
+    void runOnOperation() override;};
+   
+
 
 
 //========================================================================================================================//
@@ -57,11 +78,12 @@ struct TransformNoOpsPass : public TransformNoOpsBase<TransformNoOpsPass> {
 //========================================================================================================================//
 
 
+//Checks program shape: one function, VTA ops inside it, one finish last, at least one load.
 void CheckStructurePass::runOnOperation() {
     ModuleOp module = getOperation();
 
-    llvm::SmallVector<Operation*> opSnapshot;  //I put them all in a vector and then run so its cleaner and easier to expand. Some thing could have been done before (qst)
-
+    //walk
+    llvm::SmallVector<Operation*> opSnapshot;  //vector snapshot never gets updated
     module.walk([&](Operation *op) {
     if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
             vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
@@ -76,22 +98,42 @@ void CheckStructurePass::runOnOperation() {
         return;
     }
 
-    if (!isa<vta::UcodeOp>(opSnapshot[0])) {
-        opSnapshot[0]->emitOpError("first VTA op must be vta.ucode");
+    // Exactly one func.func.
+    llvm::SmallVector<func::FuncOp> funcs;
+    module.walk([&](func::FuncOp f) { funcs.push_back(f); });
+    if (funcs.size() != 1) {
+        module.emitError("expected exactly one func.func, found ")
+            << funcs.size();
+        signalPassFailure();
+        return;
+    }
+    func::FuncOp func = funcs[0];
+
+
+    // Every VTA op inside a func.func.
+    for (Operation *op : opSnapshot) {
+        if (!op->getParentOfType<func::FuncOp>()) {
+            op->emitOpError("VTA op must be inside a func.func");
+            signalPassFailure();
+            return;
+        }
+    }
+
+    // No non-VTA ops inside the function body.
+    Block &body = func.getBody().front();
+    for (Operation &op : body) {
+        if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
+                vta::GemmOp, vta::AluOp, vta::FinishOp,
+                vta::LoadNoOp, vta::StoreNoOp>(&op))
+            continue;
+        if (op.hasTrait<OpTrait::IsTerminator>())
+            continue;
+        op.emitOpError("unexpected non-VTA op inside VTA function");
         signalPassFailure();
         return;
     }
 
-    int ucodeCount = 0;
-    for (Operation *op : opSnapshot)
-        if (isa<vta::UcodeOp>(op)) ucodeCount++;
-    if (ucodeCount != 1) {
-        module.emitError("expected exactly one vta.ucode, found ")
-            << ucodeCount;
-        signalPassFailure();
-        return;
-    }
-
+    // Exactly one vta.finish.
     int finishCount = 0;
     for (Operation *op : opSnapshot)
         if (isa<vta::FinishOp>(op)) finishCount++;
@@ -102,12 +144,14 @@ void CheckStructurePass::runOnOperation() {
         return;
     }
 
+    // Last VTA op must be vta.finish.
     if (!isa<vta::FinishOp>(opSnapshot.back())) {
         opSnapshot.back()->emitOpError("last VTA op must be vta.finish");
         signalPassFailure();
         return;
     }
 
+     // At least one vta.load.
     bool hasLoad = false;
     for (Operation *op : opSnapshot)
         if (isa<vta::LoadOp>(op)) { hasLoad = true; break; }
@@ -117,116 +161,76 @@ void CheckStructurePass::runOnOperation() {
         return;
     }
 
-    }                                                                            
-
-    
-//===============================================================================//
-
-void TransformUcodeToLoadOpPass::runOnOperation() {
-    ModuleOp module = getOperation();
-
-    module.walk([&](vta::UcodeOp ucodeOp) {                                  
-    OpBuilder builder(ucodeOp);                                          
-    builder.setInsertionPointAfter(ucodeOp);                             
-    unsigned int n = ucodeOp.getRecords().size();                       
-
-    builder.create<vta::LoadOp>(
-                ucodeOp.getLoc(),
-                (bool)false, (bool)false, (bool)false, (bool)false,
-                (uint8_t)0, (uint16_t)0, (uint32_t)0,
-                (uint16_t)1, (uint16_t)n, (uint16_t)n,
-                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0);  //this sucks (qst)
-    });                                                                     
+    // Nested call to CheckUcode. Because also part of the Gen Struct
+    PassManager inner(module.getContext());
+    inner.addPass(createCheckUcodePass());
+    if (failed(inner.run(module)))
+        signalPassFailure();
 }
-
 //===============================================================================//
-void TransformGeneralStructurePass::runOnOperation() {
+//Everything that has to do with the ucode op.
+void CheckUcodePass::runOnOperation() {
     ModuleOp module = getOperation();
 
-    llvm::SmallVector<Operation*> opSnapshot; //(qst) - once again on vector for simplicity
+    //walk
+    llvm::SmallVector<Operation*> opSnapshot; //Just a snapshot
     module.walk([&](Operation *op) {
         if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
-                vta::GemmOp, vta::AluOp, vta::FinishOp,
-                vta::LoadNoOp, vta::StoreNoOp>(op))
+                vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
             opSnapshot.push_back(op);
     });
 
-        //  Merge duplicate ucodes. If records differ, error.
-        //  Keep the first one, erase the rest if identical.
-        llvm::SmallVector<vta::UcodeOp> ucodeSnapshot;
-        for (Operation *op : opSnapshot)
-            if (auto u = dyn_cast<vta::UcodeOp>(op))
-                ucodeSnapshot.push_back(u);
+    if (opSnapshot.empty()) {
+        module.emitError("module contains no VTA ops");
+        signalPassFailure();
+        return;
+    }
 
-        if (ucodeSnapshot.size() > 1) {
-            Attribute reference = ucodeSnapshot[0].getRecordsAttr();
-            for (size_t i = 1; i < ucodeSnapshot.size(); i++) {
-                vta::UcodeOp op = ucodeSnapshot[i];
-                if (op.getRecordsAttr() == reference) {
-                    op.erase();
-                } else {
-                    op.emitOpError("different micro: cannot merge ucodes with different Records");
-                    signalPassFailure();
-                    return;
-                }
+    // First VTA op must be ucode.
+    if (!isa<vta::UcodeOp>(opSnapshot[0])) {
+        opSnapshot[0]->emitOpError("first VTA op must be vta.ucode");
+        signalPassFailure();
+        return;
+    }
+
+    // Exactly one ucode.
+    int ucodeCount = 0;
+    vta::UcodeOp theUcode;
+    for (Operation *op : opSnapshot) {
+        if (auto u = dyn_cast<vta::UcodeOp>(op)) {
+            ucodeCount++;
+            theUcode = u;
+        }
+    }
+    if (ucodeCount != 1) {
+        module.emitError("expected exactly one vta.ucode, found ")
+            << ucodeCount;
+        signalPassFailure();
+        return;
+    }
+
+    // Every gemm/alu's UopEnd fits the ucode size.
+    unsigned n = theUcode.getRecords().size();
+    for (Operation *op : opSnapshot) {
+        if (auto g = dyn_cast<vta::GemmOp>(op)) {
+            if (g.getUopEnd() > n) {
+                g.emitOpError("UopEnd exceeds ucode record count");
+                signalPassFailure();
+                return;
             }
         }
-
-        // Move ucode to top of the function body, if not already there.
-        func::FuncOp func;
-        module.walk([&](func::FuncOp f) { func = f; });
-        if (!func) {
-            module.emitError("no func.func found");
-            signalPassFailure();
-            return;
-        }
-
-        Block &body = func.getBody().front();
-        vta::UcodeOp theUcode;
-        for (Operation &op : body)
-            if (auto u = dyn_cast<vta::UcodeOp>(&op))
-                theUcode = u;
-
-        if (theUcode) {
-            Operation *firstOp = &body.front();
-            if (firstOp != theUcode.getOperation())
-                theUcode->moveBefore(firstOp);
-        }
-
-        // Find the first vta.finish. Erase everything after it.
-        // If none exists, insert one before the terminator.
-        bool foundFinish = false;
-        for (auto it = body.begin(); it != body.end(); ) {
-            if (isa<vta::FinishOp>(*it)) {
-                foundFinish = true;
-                ++it;
-                while (it != body.end()) {
-                    if (it->hasTrait<OpTrait::IsTerminator>())
-                        break;
-                    Operation *toErase = &*it;
-                    ++it;
-                    toErase->erase();
-                        }
-                break;
+        if (auto a = dyn_cast<vta::AluOp>(op)) {
+            if (a.getUopEnd() > n) {
+                a.emitOpError("UopEnd exceeds ucode record count");
+                signalPassFailure();
+                return;
             }
-            ++it;
         }
-
-        if (!foundFinish) {
-            // Insert a finish before the function's terminator (func.return).
-            Operation *terminator = body.getTerminator();
-            OpBuilder builder(terminator);
-            builder.create<vta::FinishOp>(terminator->getLoc());
-        }
-
-        // 5. Call the ucode-load pass.
-        PassManager inner(module.getContext());
-        inner.addPass(createTransformUcodeToLoadOpPass());
-        if (failed(inner.run(module)))
-            signalPassFailure();
+    }
 }
-//===============================================================================//
 
+
+//===============================================================================//
  //CHECK_DEPENDANCY_PASS
     // OpKind: what pipeline role an op plays. Flag: the four dependency bits.
     // Queue: the four token queues between stages.
@@ -308,8 +312,8 @@ void TransformGeneralStructurePass::runOnOperation() {
     void CheckDependancyPass::runOnOperation() {
         ModuleOp module = getOperation();
 
-        // Snapshot of VTA ops in program order.
-        llvm::SmallVector<Operation*> opSnapshot;
+        //walk
+        llvm::SmallVector<Operation*> opSnapshot;//// Snapshot of VTA ops in program order.
         module.walk([&](Operation *op) {
             if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
                     vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
@@ -340,8 +344,7 @@ void TransformGeneralStructurePass::runOnOperation() {
         Operation *firstStuckOp = nullptr;
         Operation *finishOp = nullptr;
 
-        // Decrement. False if the counter would go negative, i.e. a wait
-        // has no matching signal earlier in program order.
+        // Decrement. False if the counter would go negative, i.e. a wait has no matching signal earlier in program order.
         auto dec = [&](Queue q, Operation *op) -> bool {
             switch (q) {
             case Queue::LoadToCompute:
@@ -370,8 +373,7 @@ void TransformGeneralStructurePass::runOnOperation() {
             }
         };
 
-        // Walk in program order, updating counters. Record first stuck op
-        // and first finish op.
+        // Walk in program order, updating counters. Record first stuck op and first finish op.
         for (Operation *op : opSnapshot) {
             OpKind k = kindOf(op);
 
@@ -399,14 +401,13 @@ void TransformGeneralStructurePass::runOnOperation() {
             }
         }
 
-        // Check 3: no flags anywhere.
+        // no flags anywhere.
         if (!anyFlagSet) {
             module.emitWarning("no dependency flags set anywhere; "
                             "this program will likely hang in the simulator");
         }
 
-        // Check 2: end balance. Positive -> extra signals, warn.
-        // Negative -> extra waits, they block, error.
+        // end balance. Positive -> extra signals, warn. Negative -> extra waits, they block, error.
         auto reportQueue = [&](const char *name, int value) -> LogicalResult {
             if (value > 0) {
                 module.emitWarning() << name << " has " << value
@@ -427,7 +428,7 @@ void TransformGeneralStructurePass::runOnOperation() {
         balanceOk &= succeeded(reportQueue("ComputeToStore", computeToStore));
         balanceOk &= succeeded(reportQueue("StoreToCompute", storeToCompute));
 
-        // Check 4: stuck op before finish means finish is unreachable.
+        // stuck op before finish means finish is unreachable.
         if (firstStuckOp && finishOp && firstStuckOp->isBeforeInBlock(finishOp)) {
             module.emitWarning("execution cannot reach vta.finish: "
                             "an earlier op waits on a queue that is never signaled");
@@ -437,7 +438,30 @@ void TransformGeneralStructurePass::runOnOperation() {
             signalPassFailure();
     
 }
+
+
 //===============================================================================//
+//Ucode has to be loaded. This does that
+void TransformUcodeToLoadOpPass::runOnOperation() {
+    ModuleOp module = getOperation();
+
+    module.walk([&](vta::UcodeOp ucodeOp) {                                  
+    OpBuilder builder(ucodeOp);                                          
+    builder.setInsertionPointAfter(ucodeOp);                             
+    unsigned int n = ucodeOp.getRecords().size();                       
+
+    builder.create<vta::LoadOp>(
+                ucodeOp.getLoc(),
+                (bool)false, (bool)false, (bool)false, (bool)false,
+                (uint8_t)0, (uint16_t)0, (uint32_t)0,
+                (uint16_t)1, (uint16_t)n, (uint16_t)n,
+                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0);  
+                //cast everiething for safet. If not problems (change at your own peril)
+    });                                                                     
+}
+
+//===============================================================================//
+//Rewrites load_noop / store_noop into real zero-size LoadOp / StoreOp.
  void TransformNoOpsPass::runOnOperation() {
     ModuleOp module = getOperation();
 
@@ -473,7 +497,101 @@ void TransformGeneralStructurePass::runOnOperation() {
         op->erase();
     
     }
-    }  // closes TransformNoOpsPass::runOnOperation
+}  
+
+
+
+
+//===============================================================================//
+//Minor Transformations on the General Structure 
+//(kinda useless. Might get turned into the actual merge ucode)
+void TransformGeneralStructurePass::runOnOperation() {
+    ModuleOp module = getOperation();
+
+    llvm::SmallVector<Operation*> opSnapshot; 
+    module.walk([&](Operation *op) {
+        if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
+                vta::GemmOp, vta::AluOp, vta::FinishOp,
+                vta::LoadNoOp, vta::StoreNoOp>(op))
+            opSnapshot.push_back(op);
+    });
+
+        //  Merge duplicate ucodes. If records differ, error.
+        //  Keep the first one, erase the rest if identical.
+        llvm::SmallVector<vta::UcodeOp> ucodeSnapshot;
+        for (Operation *op : opSnapshot)
+            if (auto u = dyn_cast<vta::UcodeOp>(op))
+                ucodeSnapshot.push_back(u);
+
+        if (ucodeSnapshot.size() > 1) {
+            Attribute reference = ucodeSnapshot[0].getRecordsAttr();
+            for (size_t i = 1; i < ucodeSnapshot.size(); i++) {
+                vta::UcodeOp op = ucodeSnapshot[i];
+                if (op.getRecordsAttr() == reference) {
+                    op.erase();
+                } else {
+                    op.emitOpError("different micro: cannot merge ucodes with different Records");
+                    signalPassFailure();
+                    return;
+                }
+            }
+        }
+
+        // Move ucode to top of the function body, if not already there.
+        func::FuncOp func;
+        module.walk([&](func::FuncOp f) { func = f; });
+        if (!func) {
+            module.emitError("no func.func found");
+            signalPassFailure();
+            return;
+        }
+
+        Block &body = func.getBody().front();
+        vta::UcodeOp theUcode;
+        for (Operation &op : body)
+            if (auto u = dyn_cast<vta::UcodeOp>(&op))
+                theUcode = u;
+
+        if (theUcode) {
+            Operation *firstOp = &body.front();
+            if (firstOp != theUcode.getOperation())
+                theUcode->moveBefore(firstOp);
+        }
+
+        // Find the first vta.finish. Erase everything after it.
+        // If none exists, insert one before the terminator.
+        bool foundFinish = false;
+        for (auto it = body.begin(); it != body.end(); ) {
+            if (isa<vta::FinishOp>(*it)) {
+                foundFinish = true;
+                ++it;
+                while (it != body.end()) {
+                    if (it->hasTrait<OpTrait::IsTerminator>())
+                        break;
+                    Operation *toErase = &*it;
+                    ++it;
+                    toErase->erase();
+                        }
+                break;
+            }
+            ++it;
+        }
+
+        if (!foundFinish) {
+            // Insert a finish before the function's terminator (func.return).
+            Operation *terminator = body.getTerminator();
+            OpBuilder builder(terminator);
+            builder.create<vta::FinishOp>(terminator->getLoc());
+        }
+
+        // Call the ucode-load pass.
+        PassManager inner(module.getContext());
+        inner.addPass(createTransformUcodeToLoadOpPass());
+        if (failed(inner.run(module)))
+            signalPassFailure();
+}
+
+
 
 
 
@@ -494,26 +612,41 @@ void TransformGeneralStructurePass::runOnOperation() {
 std::unique_ptr<::mlir::Pass> createCheckStructurePass() {
     CheckStructurePass *pass = new CheckStructurePass();
     return std::unique_ptr<Pass>(pass);}
+ //===============================================================================//
+std::unique_ptr<::mlir::Pass> createCheckUcodePass() {
+    CheckUcodePass *pass = new CheckUcodePass();
+    return std::unique_ptr<Pass>(pass);}
+
+
+//===============================================================================//
+std::unique_ptr<::mlir::Pass> createCheckDependancyPass() {
+    CheckDependancyPass *pass = new CheckDependancyPass();
+    return std::unique_ptr<Pass>(pass);}
+
+
+//===============================================================================//
+std::unique_ptr<::mlir::Pass> createTransformNoOpsPass() {
+    TransformNoOpsPass *pass = new TransformNoOpsPass();
+    return std::unique_ptr<Pass>(pass);}
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass() {
     TransformUcodeToLoadOpPass *pass = new TransformUcodeToLoadOpPass();
     return std::unique_ptr<Pass>(pass);}
+
+
+
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     TransformGeneralStructurePass *pass = new TransformGeneralStructurePass();
-    return std::unique_ptr<Pass>(pass);
-}
-//===============================================================================//
-std::unique_ptr<::mlir::Pass> createCheckDependancyPass() {
-    CheckDependancyPass *pass = new CheckDependancyPass();
-    return std::unique_ptr<Pass>(pass);
-}
-//===============================================================================//
-std::unique_ptr<::mlir::Pass> createTransformNoOpsPass() {
-    TransformNoOpsPass *pass = new TransformNoOpsPass();
-    return std::unique_ptr<Pass>(pass);
-}
-//===============================================================================//
-                                                       
+    return std::unique_ptr<Pass>(pass);}
+
+
+
+
+
+
+
+
+//========================================================================================================//                                                   
 }                                                                            // close mlir::vta
 }                                                                            // close mlir

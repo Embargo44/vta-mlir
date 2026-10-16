@@ -10,6 +10,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+
 // Standard LLVM infrastructure..
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -32,13 +33,30 @@ int main(int argc, char **argv) {
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
       return mlir::vta::createCheckStructurePass();   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+      return mlir::vta::createCheckUcodePass(); }); 
+
+
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
       return mlir::vta::createTransformUcodeToLoadOpPass();  });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::vta::createTransformGeneralStructurePass();  }); 
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+      return mlir::vta::createTransformNoOpsPass(); }); 
+
+
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> { 
       return mlir::vta::createCheckDependancyPass();  });  
+
+      
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::vta::createTransformNoOpsPass(); });       
+      return mlir::vta::createTransformGeneralStructurePass();  }); 
+
+
+  
+
+
+  
+    
+    
+        
 
   
 

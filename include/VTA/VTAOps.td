@@ -1,10 +1,12 @@
-                                               //TableGen source.
+//======================================================================================================================// 
+//                                           TABLEGEN SOURCE                                                            //
 //======================================================================================================================//
-//======================================================================================================================//
+
 
 //Generates VTAOps.h.inc, VTAOps.cpp.inc, VTAOpsDialect.h.inc/cpp.inc, VTAOpsTypes.h.inc/cpp.inc, VTAPasses.h.inc (see add_mlir_dialect in include/VTA/CMakeLists.txt).
 #ifndef VTA_OPS
 #define VTA_OPS
+
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -20,11 +22,13 @@ def VTADialect : Dialect {
     let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
+//Base class all VTA Ops inherit from
 class VTA_Op<string mnemonic, list<Trait> traits = []> : Op<VTADialect, mnemonic, traits>;
 
 
 //Verifiers in - lib/VTA/VTAOps.cpp 
 //Serializers in vta-translate/vta-translate.cpp.
+
 
 
 def LoadOp : VTA_Op<"load"> {
@@ -33,12 +37,17 @@ def LoadOp : VTA_Op<"load"> {
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
     DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+    //Selects the destination SRAM. 
     I8Attr:$MemoryType,
+    //Offset within the destination SRAM
     I16Attr:$SramBase,
+    //Source byte address in DRAM
     I32Attr:$DramBase,
+    //Transfer shape: YSize rows of XSize elements, XStride bytes apart in DRAM.
     I16Attr:$YSize,
     I16Attr:$XSize,
     I16Attr:$XStride,
+    //Padding around the transferred block
     I8Attr:$YPad0,
     I8Attr:$YPad1,
     I8Attr:$XPad0,
@@ -46,6 +55,7 @@ def LoadOp : VTA_Op<"load"> {
 
     let results = (outs);
 
+    
     let builders = [
         OpBuilder<(ins
             "bool":$popPrevDep,
@@ -65,9 +75,9 @@ def LoadOp : VTA_Op<"load"> {
         )>
     ];
     
-    
+     //MemoryType in VTAOps.cpp
     let assemblyFormat = [{
-        `mem` $MemoryType `,`
+        `mem` custom<MemoryType>($MemoryType) `,` 
         `sram` $SramBase `,`
         `dram` $DramBase `,`
         `size` $YSize `x` $XSize `,`
@@ -78,6 +88,7 @@ def LoadOp : VTA_Op<"load"> {
     let hasVerifier = 1;
 
 }
+
 
 def StoreOp : VTA_Op<"store"> {
     let arguments = (ins
@@ -85,12 +96,17 @@ def StoreOp : VTA_Op<"store"> {
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
     DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+    //Selects the destination SRAM. 
     I8Attr:$MemoryType,
+    //Offset within the destination SRAM
     I16Attr:$SramBase,
+    //Source byte address in DRAM
     I32Attr:$DramBase,
+    //Transfer shape: YSize rows of XSize elements, XStride bytes apart in DRAM.
     I16Attr:$YSize,
     I16Attr:$XSize,
     I16Attr:$XStride,
+    //Padding around the transferred block
     I8Attr:$YPad0,
     I8Attr:$YPad1,
     I8Attr:$XPad0,
@@ -116,9 +132,10 @@ def StoreOp : VTA_Op<"store"> {
             "uint32_t":$xPad1
         )>
     ];
-     
+    
+     //MemoryType in VTAOps.cpp
     let assemblyFormat = [{
-        `mem` $MemoryType `,`
+        `mem` custom<MemoryType>($MemoryType) `,`
         `sram` $SramBase `,`
         `dram` $DramBase `,`
         `size` $YSize `x` $XSize `,`
@@ -128,6 +145,7 @@ def StoreOp : VTA_Op<"store"> {
     }];
     let hasVerifier = 1;
 }
+
 
 def GemmOp : VTA_Op<"gemm"> {
     let arguments = (ins
@@ -136,10 +154,13 @@ def GemmOp : VTA_Op<"gemm"> {
     DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
     I1Attr:$ResetReg,
+    //Range of uop records to execute
     I8Attr:$UopBgn,
     I8Attr:$UopEnd,
+    //Loop shape: IterOut iterations of IterIn.
     I16Attr:$IterOut,
     I16Attr:$IterIn,
+    //Address multipliers applied when advancing the acc/src/wgt pointers.
     I8Attr:$DstFactorOut,
     I8Attr:$DstFactorIn,
     I8Attr:$SrcFactorOut,
@@ -196,7 +217,9 @@ def AluOp : VTA_Op<"alu"> {
     I8Attr:$DstFactorIn,
     I8Attr:$SrcFactorOut,
     I8Attr:$SrcFactorIn,
+    //Selects MIN/MAX/ADD/SHR/MUL
     I8Attr:$AluOpcode,
+    //If true, the second operand is Imm instead of an SRAM read.
     I1Attr:$UseImm,
     I16Attr:$Imm);
 
@@ -236,12 +259,14 @@ def AluOp : VTA_Op<"alu"> {
     let hasVerifier = 1;
 }
 
+
 def FinishOp : VTA_Op<"finish"> {
     let arguments = (ins);
     let results = (outs);
     let assemblyFormat = "attr-dict";
     
 }
+
 
 def UcodeOp : VTA_Op<"ucode"> {
     let arguments = (ins ArrayAttr:$Records);
@@ -252,6 +277,7 @@ def UcodeOp : VTA_Op<"ucode"> {
 
     let hasVerifier=1;
 }
+
 
 def LoadNoOp : VTA_Op<"load_noop"> {
     let arguments = (ins
@@ -280,15 +306,19 @@ def StoreNoOp : VTA_Op<"store_noop"> {
 //Passes.cpp via MLIRVTAPassIncGen in include/VTA/CMakeLists.txt.
 //Factory called from vta-opt/vta-opt.cpp and vta-translate/vta-translate.cpp.
 
-def CheckDependancy : Pass<"check-dependancy", "ModuleOp"> {}
+def CheckStructure : Pass<"vta-check-structure", "ModuleOp"> {}
+def CheckUcode : Pass<"vta-check-ucode", "ModuleOp"> {}
+
+def CheckDependancy : Pass<"vta-check-dependancy", "ModuleOp"> {}
 
 def TransformUcodeToLoadOp : Pass<"vta-transform-ucode-to-loadop", "ModuleOp"> {}
-
-def CheckStructure : Pass<"vta-check-structure", "ModuleOp"> {}
+def TransformNoOps : Pass<"vta-transform-noops", "ModuleOp"> {}
 
 def TransformGeneralStructure : Pass<"vta-transform-general-structure", "ModuleOp"> {}
 
-def TransformNoOps : Pass<"vta-transform-noops", "ModuleOp"> {}
+
+
+
 
 
 

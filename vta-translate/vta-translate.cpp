@@ -19,7 +19,6 @@
 #include "VTA/VTAOps.h"                                  
                              
 
-
 // Pass infrastructure
 #include "mlir/Pass/Pass.h"                              
 #include "VTA/Passes.h"                                  
@@ -27,11 +26,11 @@
 
 using namespace mlir;
 
-//static constexpr uint32_t DRAM_OFFSET = 0x1000; //doesnt work with simulator (qst)
 
 
 
 
+//Entry point called by mlir-translate with --vta-binary.
 static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output) {
     auto module = dyn_cast<ModuleOp>(op);
     if (!module)
@@ -39,23 +38,32 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
 
 
 
-
-    
+//====================================================================================================================
+    //Pass pipeline. Order matters 
     mlir::PassManager pm(module.getContext());
-    pm.addPass(vta::createTransformGeneralStructurePass());
+
+    //pm.addPass(vta::createTransformGeneralStructurePass());
     pm.addPass(vta::createTransformNoOpsPass());
-    pm.addPass(vta::createCheckStructurePass());   //order here kinda matters. could cut down on code (qst). nested passes
-    //pm.addPass(vta::createTransformUcodeToLoadOpPass()); 
+
+    pm.addPass(vta::createTransformUcodeToLoadOpPass()); 
+    pm.addPass(vta::createCheckStructurePass());
+    //pm.addPass(vta::createCheckUcodePass());   
+    
     pm.addPass(vta::createCheckDependancyPass());
         if (mlir::failed(pm.run(module)))
             return failure();
 
 
+    //output buffers. insn_bytes->instruction region,
+    //ucode_bytes -> uop record region. Both get written into the binary after the 4-byte length header.
     std::vector<uint8_t> insn_bytes;       
     std::vector<uint8_t> ucode_bytes;  
 
     
     
+    //Walk every VTA op and pack it into its 16-byte (or 4-byte for uop)
+    //binary form. The struct layouts come from CustomHardwareDescription.h
+    //and must match the simulator's view of the same bytes.
     module.walk([&](Operation *innerOp) {
         if (auto loadOp = dyn_cast<vta::LoadOp>(innerOp)) {
             VTAMemInsn insn = {};    
@@ -75,6 +83,7 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn.x_pad_0        = loadOp.getXPad0();
             insn.x_pad_1        = loadOp.getXPad1();
 
+            //memcpy into a byte buffer. The 16-byte size is fixed in hardware
             char buf[16] = {};
             std::memcpy(buf, &insn, sizeof(VTAMemInsn));
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
@@ -149,6 +158,7 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
         }
         else if (auto finishOp = dyn_cast<vta::FinishOp>(innerOp)) {
+            //finish has no body
             VTAGenericInsn insn = {};
             insn.opcode = VTA_OP_FINISH;
             char buf[16] = {};
@@ -156,7 +166,7 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
         }
         else if (auto ucodeOp = dyn_cast<vta::UcodeOp>(innerOp)) {
-          
+            //Ucode gets cast differently
            for (Attribute a : ucodeOp.getRecords().getValue()) {
                 auto triple = a.cast<ArrayAttr>();
                 VTAUop uop = {};
@@ -171,15 +181,40 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
 
     });
 
+    //===------------------------------------------------------------------===//
+    // Verifier for Translate
+    //===------------------------------------------------------------------===//
 
+    //ucode load x_size matches ucode record count.
+    uint32_t expected_ucode_records =
+        (uint32_t)(ucode_bytes.size() / VTA_UCODE_RECORD_BYTES);
+
+    uint32_t found_ucode_x_size = 0;
+    for (size_t i = 0; i + VTA_INSN_BYTES <= insn_bytes.size(); i += VTA_INSN_BYTES) {
+        VTAMemInsn *m = (VTAMemInsn *)(insn_bytes.data() + i);
+        if (m->opcode == VTA_OP_LOAD && m->memory_type == VTA_MEM_UOP) {
+            found_ucode_x_size = m->x_size;
+            break;
+        }
+    }
+    if (found_ucode_x_size != expected_ucode_records) {
+        module.emitError("ucode load x_size does not match ucode record count");
+        return failure();
+    }
+
+    
+    //insn_len fits in the 4-byte header field.
+    if (insn_bytes.size() > UINT32_MAX) {
+        module.emitError("instruction bytes exceed 32-bit header field");
+        return failure();
+    }
 
     //Output format: [4-byte LE insn_len][insn_bytes][ucode_bytes].
     //run_sim.cpp splits the file on insn_len.
-    uint32_t insn_len = (uint32_t)insn_bytes.size();  //cap for input size
+    uint32_t insn_len = (uint32_t)insn_bytes.size();
     char hdr[4];
     std::memcpy(hdr, &insn_len, 4);
     output.write(hdr, 4);
-
 
     output.write((const char *)insn_bytes.data(), insn_bytes.size());
 
@@ -188,11 +223,14 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
     return success();
 }
 
+//Registers the translation under the name "vta-binary", so the CLI
+//flag is --vta-binary. Claims VTADialect and func.
 static void registerVTATranslate() {
     TranslateFromMLIRRegistration registration("vta-binary",translateVTAtoBit,[](DialectRegistry &registry) {registry.insert<vta::VTADialect,mlir::func::FuncDialect>();});
 }
 
 
+//Standard mlir-translate entry. Passes argv straight through.
 int main(int argc, char **argv) {
     //mlir::registerAllTranslations();
     registerVTATranslate();
@@ -202,7 +240,8 @@ int main(int argc, char **argv) {
 
 
 
-// ./bin/vta-translate ~/Desktop/test.mlir --vta-binary -o ~/Desktop/result.txt
+// cd ~/vta-mlir/build
+//./bin/vta-translate ~/Desktop/test.mlir --vta-binary -o ~/Desktop/result.txt
 
 /*
 

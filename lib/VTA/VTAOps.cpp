@@ -1,4 +1,10 @@
-//Verifier implementations. Fills in verify() declared by VTAOps.td.
+//======================================================================================================================// 
+//Gets attached to the VTAOps.cpp file from TableGen. 
+//Includes Misc stuff                                                                                             
+//======================================================================================================================//
+
+//custom description file for hardware
+#include "VTA/CustomHardwareDescription.h"
 
 // Standard MLIR infrastructure.
 #include "mlir/Support/LogicalResult.h"
@@ -8,121 +14,59 @@
 #include "VTA/VTAOps.h"
 #include "VTA/VTADialect.h"
 
+//Namespace shortcuts 
+using namespace mlir;
+using namespace mlir::vta;
+
+//Order is Important. These have to be forward declared (and have to be before the using)
+static ParseResult parseMemoryType(OpAsmParser &p, IntegerAttr &attr);
+static void printMemoryType(OpAsmPrinter &p, Operation *op, IntegerAttr attr);
+
+//Pulls in builders, getters, and verify() stubs for every op in VTAOps.td
 #define GET_OP_CLASSES
 #include "VTA/VTAOps.cpp.inc"
 
 
-using namespace mlir;
-using namespace mlir::vta;
 
+// Memory type parser and printer for custom<MemoryType> in .td
+//Turns keyword into ints, acceptable for the op def. (syntax sugar)
+// (qst) - doing this step by step
 
-LogicalResult LoadOp::verify() {
-    if (getMemoryType() > 3)
-        return emitOpError("MemoryType must be 0-3 (UOP, WGT, INP, ACC)");
-    if (getYPad0() > 15)
-        return emitOpError("YPad0 must be 0-15");
-    if (getYPad1() > 15)
-        return emitOpError("YPad1 must be 0-15");
-    if (getXPad0() > 15)
-        return emitOpError("XPad0 must be 0-15");
-    if (getXPad1() > 15)
-        return emitOpError("XPad1 must be 0-15");
-    return success();
-}
-
-LogicalResult StoreOp::verify() {
-    if (getMemoryType() != 4)
-        return emitOpError("MemoryType must be 4 (OUT)");
-    if (getYPad0() > 15)
-        return emitOpError("YPad0 must be 0-15");
-    if (getYPad1() > 15)
-        return emitOpError("YPad1 must be 0-15");
-    if (getXPad0() > 15)
-        return emitOpError("XPad0 must be 0-15");
-    if (getXPad1() > 15)
-        return emitOpError("XPad1 must be 0-15");
-    return success();
-}
-
-LogicalResult GemmOp::verify() {
-    if (getUopBgn() > 127)
-        return emitOpError("UopBgn must be 0-127");
-    if (getUopBgn() > getUopEnd())
-        return emitOpError("UopBgn must be <= UopEnd");
-    if (getIterOut() < 1)
-        return emitOpError("IterOut must be >= 1");
-    if (getIterIn() < 1)
-        return emitOpError("IterIn must be >= 1");
-    if (getIterOut() > 16383)
-        return emitOpError("IterOut must be <= 16383");
-    if (getIterIn() > 16383)
-        return emitOpError("IterIn must be <= 16383");
-    if (getDstFactorOut() > 127)
-        return emitOpError("DstFactorOut must be 0-127");
-    if (getDstFactorIn() > 127)
-        return emitOpError("DstFactorIn must be 0-127");
-    if (getSrcFactorOut() > 127)
-        return emitOpError("SrcFactorOut must be 0-127");
-    if (getSrcFactorIn() > 127)
-        return emitOpError("SrcFactorIn must be 0-127");
-    if (getWgtFactorOut() > 127)
-        return emitOpError("WgtFactorOut must be 0-127");
-    if (getWgtFactorIn() > 127)
-        return emitOpError("WgtFactorIn must be 0-127");
-    return success();
-}
-
-LogicalResult AluOp::verify() {
-    if (getUopBgn() > 127)
-        return emitOpError("UopBgn must be 0-127");
-    if (getUopBgn() > getUopEnd())
-        return emitOpError("UopBgn must be <= UopEnd");
-    if (getIterOut() < 1)
-        return emitOpError("IterOut must be >= 1");
-    if (getIterIn() < 1)
-        return emitOpError("IterIn must be >= 1");
-    if (getIterOut() > 16383)
-        return emitOpError("IterOut must be <= 16383");
-    if (getIterIn() > 16383)
-        return emitOpError("IterIn must be <= 16383");
-    if (getDstFactorOut() > 127)
-        return emitOpError("DstFactorOut must be 0-127");
-    if (getDstFactorIn() > 127)
-        return emitOpError("DstFactorIn must be 0-127");
-    if (getSrcFactorOut() > 127)
-        return emitOpError("SrcFactorOut must be 0-127");
-    if (getSrcFactorIn() > 127)
-        return emitOpError("SrcFactorIn must be 0-127");
-    if (getAluOpcode() > 4)
-        return emitOpError("AluOpcode must be 0-4 (MIN, MAX, ADD, SHR, MUL)");
-    return success();
-}
-
-
-LogicalResult UcodeOp::verify() {
-    if (getRecords().empty())
-        return emitOpError("Records must not be empty");
-    for (Attribute a : getRecords()) {          //more readable then before (diego)
-        auto triple = a.dyn_cast<ArrayAttr>();
-        if (!triple || triple.size() != 3)
-            return emitOpError("each record must be a triple (dst, src, wgt)");   
+static ParseResult parseMemoryType(OpAsmParser &p, IntegerAttr &attr) {
+    int v;
+    
+    if (p.parseOptionalInteger(v).hasValue()) {
+        attr = IntegerAttr::get(IntegerType::get(p.getContext(), 8), v);
+        return success();
     }
+    //Keywordw: mem UOP, mem INP -> nums
+    StringRef s;
+    if (p.parseKeyword(&s))
+        return failure();
+    if      (s == "UOP") v = 0;
+    else if (s == "WGT") v = 1;
+    else if (s == "INP") v = 2;
+    else if (s == "ACC") v = 3;
+    else if (s == "OUT") v = 4;
+    else
+        return p.emitError(p.getCurrentLocation(), "unknown memory type '" + s + "'");
+    attr = IntegerAttr::get(IntegerType::get(p.getContext(), 8), v);
     return success();
 }
 
-
-LogicalResult LoadNoOp::verify() {
-    if (getPopPrevDep())
-        return emitOpError("PopPrevDep has no effect on a load no-op");
-    if (getPushPrevDep())
-        return emitOpError("PushPrevDep has no effect on a load no-op");
-    return success();
+//Inverse of parseMemoryType. Turns the stored integer back into a keyword
+static void printMemoryType(OpAsmPrinter &p, Operation *op, IntegerAttr attr) {
+    switch (attr.getInt()) {
+        case 0: p << "UOP"; break;
+        case 1: p << "WGT"; break;
+        case 2: p << "INP"; break;
+        case 3: p << "ACC"; break;
+        case 4: p << "OUT"; break;
+        default: p << attr.getInt(); break;
+    }
 }
 
-LogicalResult StoreNoOp::verify() {
-    if (getPopNextDep())
-        return emitOpError("PopNextDep has no effect on a store no-op");
-    if (getPushNextDep())
-        return emitOpError("PushNextDep has no effect on a store no-op");
-    return success();
-}
+
+
+
+#include "VTAOpsVerifiers.inc"    //verifier attached here (qst)

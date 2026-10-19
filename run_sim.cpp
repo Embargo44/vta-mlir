@@ -3,16 +3,17 @@
 
 // To build:
 //   g++ -std=c++17 -O2 run_sim.cpp -o run_sim \
-//     -I"$TVM_HOME/3rdparty/vta-hw/include" \
-//     -I"$TVM_HOME/3rdparty/vta-hw/src" \
-//     -I"$TVM_HOME/include" \
+//     -I"$VTA_MLIR_HOME/3rdparty/tvm/3rdparty/vta-hw/include" \
+//     -I"$VTA_MLIR_HOME/3rdparty/tvm/3rdparty/vta-hw/src" \
+//     -I"$VTA_MLIR_HOME/3rdparty/tvm/include" \
 //     -I"$VTA_MLIR_HOME/include" \
-//     -L"$TVM_HOME/build" -lvta_fsim -ltvm_runtime \
-//     -Wl,-rpath,"$TVM_HOME/build"
+//     -L"$VTA_MLIR_HOME/3rdparty/tvm/build" -lvta_fsim -ltvm_runtime \
+//     -Wl,-rpath,"$VTA_MLIR_HOME/3rdparty/tvm/build"
 //
 // Or run ./build_run_sim.sh in the project root, which does the same thing.
 //
-// TVM_HOME defaults to $HOME/tvm. Set it if your TVM checkout is elsewhere.
+//TVM is vendored as a git submodule under 3rdparty/tvm.
+
 
 
 
@@ -144,27 +145,3 @@ int main(int argc, char **argv) {
 
 
 
-/*
-
-cd ~/vta-mlir
-g++ -std=c++17 -O2 run_sim.cpp -o run_sim \
-  -I"$HOME/tvm/3rdparty/vta-hw/include" \
-  -I"$HOME/tvm/3rdparty/vta-hw/src" \
-  -I"$HOME/tvm/include" \
-  -I"$HOME/vta-mlir/include" \
-  -L"$HOME/tvm/build" -lvta_fsim -ltvm_runtime \
-  -Wl,-rpath,"$HOME/tvm/build"
-echo "build: $?"
-
-
-
-
-~/vta-mlir/build/bin/vta-translate ~/Desktop/test.mlir --vta-binary -o ~/Desktop/out.bin
-~/vta-mlir/run_sim ~/Desktop/out.bin
-
-
-
-
-
-
-*/

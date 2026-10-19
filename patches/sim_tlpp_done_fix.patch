@@ -1,6 +1,8 @@
---- a/sim_tlpp.cc
-+++ b/sim_tlpp.cc
-@@ -150,7 +150,7 @@
+diff --git a/src/sim/sim_tlpp.cc b/src/sim/sim_tlpp.cc
+index d5ec7ea..d1f2d2c 100644
+--- a/src/sim/sim_tlpp.cc
++++ b/src/sim/sim_tlpp.cc
+@@ -150,7 +150,7 @@ void TlppVerify::CoreRun(CORE_TYPE core_type) {
       * If instruction is FINISH set done flag.
       * notification.
       */

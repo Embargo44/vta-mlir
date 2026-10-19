@@ -21,6 +21,7 @@ target_link_libraries(vta-translate
   MLIRSPIRVDialect
   MLIRTranslateLib
   MLIRSupport
+  MLIRTransforms
   )
 
 mlir_check_link_libraries(vta-translate)

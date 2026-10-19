@@ -5,6 +5,7 @@ set(LIBS
         ${conversion_libs}
         MLIRArithmeticDialect
         MLIROptLib
+        MLIRTransforms
         MLIRVTA
         )
 add_llvm_executable(vta-opt vta-opt.cpp)

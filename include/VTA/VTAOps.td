@@ -11,6 +11,7 @@
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Pass/PassBase.td"
 
 
@@ -22,8 +23,29 @@ def VTADialect : Dialect {
     let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
-//Base class all VTA Ops inherit from
-class VTA_Op<string mnemonic, list<Trait> traits = []> : Op<VTADialect, mnemonic, traits>;
+//Base class all VTA Ops inherit from.
+//Requires vta.func as parent — parser rejects VTA ops outside a function.
+class VTA_Op<string mnemonic, list<Trait> traits = []>
+    : Op<VTADialect, mnemonic, traits # [HasParent<"FuncOp">]>;
+
+//Base class for VTA structural ops (containers, not instructions).
+//Doesn't require a parent, so FuncOp can use it.
+class VTA_StructuralOp<string mnemonic, list<Trait> traits = []>
+    : Op<VTADialect, mnemonic, traits>;
+
+//Top-level container. Holds one block of VTA instructions.
+def FuncOp : VTA_StructuralOp<"func", [
+    IsolatedFromAbove,
+    SingleBlock,
+    Symbol
+]> {
+    let arguments = (ins SymbolNameAttr:$sym_name);
+    let regions = (region SizedRegion<1>:$body);
+    let assemblyFormat = [{
+        $sym_name `(` attr-dict `)` $body
+    }];
+    let hasVerifier = 1;
+}
 
 
 //Verifiers in - lib/VTA/VTAOps.cpp 
@@ -260,7 +282,7 @@ def AluOp : VTA_Op<"alu"> {
 }
 
 
-def FinishOp : VTA_Op<"finish"> {
+def FinishOp : VTA_Op<"finish", [Terminator]> {
     let arguments = (ins);
     let results = (outs);
     let assemblyFormat = "attr-dict";
@@ -300,6 +322,7 @@ def StoreNoOp : VTA_Op<"store_noop"> {
     let assemblyFormat = "attr-dict";
     let hasVerifier = 1;
 }
+
 
 
 

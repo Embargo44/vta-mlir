@@ -38,8 +38,7 @@ namespace mlir { namespace vta { namespace {
 
 
 
-
-//Checks program shape: one function, VTA ops inside it, one finish last, at least one load.
+//Checks program shape: one vta.func, at least one load.
 struct CheckStructurePass : public CheckStructureBase<CheckStructurePass> {
     void runOnOperation() override;};    
 //========================================================================================================================//
@@ -66,7 +65,7 @@ struct CheckDependancyPass : public CheckDependancyBase<CheckDependancyPass> {
     void runOnOperation() override;};   
 
 //========================================================================================================================//
-//Merges duplicate ucodes, moves ucode to top of body, trims ops after finish.
+//Merges duplicate ucodes, moves ucode to top of body.
 struct TransformGeneralStructurePass : public TransformGeneralStructureBase<TransformGeneralStructurePass> {
     void runOnOperation() override;};
    
@@ -78,90 +77,30 @@ struct TransformGeneralStructurePass : public TransformGeneralStructureBase<Tran
 //========================================================================================================================//
 
 
-//Checks program shape: one function, VTA ops inside it, one finish last, at least one load.
+//Checks program shape: one vta.func, at least one load.
 void CheckStructurePass::runOnOperation() {
     ModuleOp module = getOperation();
 
-    //walk
-    llvm::SmallVector<Operation*> opSnapshot;  //vector snapshot never gets updated
-    module.walk([&](Operation *op) {
-    if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
-            vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
-        opSnapshot.push_back(op); 
-    });
-
-
-
-    if (opSnapshot.empty()) {
-        module.emitError("module contains no VTA ops");
-        signalPassFailure();
-        return;
-    }
-
-    // Exactly one func.func.
-    llvm::SmallVector<func::FuncOp> funcs;
-    module.walk([&](func::FuncOp f) { funcs.push_back(f); });
+    // Exactly one vta.func.
+    llvm::SmallVector<vta::FuncOp> funcs;
+    module.walk([&](vta::FuncOp f) { funcs.push_back(f); });
     if (funcs.size() != 1) {
-        module.emitError("expected exactly one func.func, found ")
+        module.emitError("expected exactly one vta.func, found ")
             << funcs.size();
         signalPassFailure();
         return;
     }
-    func::FuncOp func = funcs[0];
 
-
-    // Every VTA op inside a func.func.
-    for (Operation *op : opSnapshot) {
-        if (!op->getParentOfType<func::FuncOp>()) {
-            op->emitOpError("VTA op must be inside a func.func");
-            signalPassFailure();
-            return;
-        }
-    }
-
-    // No non-VTA ops inside the function body.
-    Block &body = func.getBody().front();
-    for (Operation &op : body) {
-        if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
-                vta::GemmOp, vta::AluOp, vta::FinishOp,
-                vta::LoadNoOp, vta::StoreNoOp>(&op))
-            continue;
-        if (op.hasTrait<OpTrait::IsTerminator>())
-            continue;
-        op.emitOpError("unexpected non-VTA op inside VTA function");
-        signalPassFailure();
-        return;
-    }
-
-    // Exactly one vta.finish.
-    int finishCount = 0;
-    for (Operation *op : opSnapshot)
-        if (isa<vta::FinishOp>(op)) finishCount++;
-    if (finishCount != 1) {
-        module.emitError("expected exactly one vta.finish, found ")
-            << finishCount;
-        signalPassFailure();
-        return;
-    }
-
-    // Last VTA op must be vta.finish.
-    if (!isa<vta::FinishOp>(opSnapshot.back())) {
-        opSnapshot.back()->emitOpError("last VTA op must be vta.finish");
-        signalPassFailure();
-        return;
-    }
-
-     // At least one vta.load.
+    // At least one vta.load.
     bool hasLoad = false;
-    for (Operation *op : opSnapshot)
-        if (isa<vta::LoadOp>(op)) { hasLoad = true; break; }
+    module.walk([&](vta::LoadOp) { hasLoad = true; });
     if (!hasLoad) {
         module.emitError("module must contain at least one vta.load");
         signalPassFailure();
         return;
     }
 
-    // Nested call to CheckUcode. Because also part of the Gen Struct
+    // Nested call to CheckUcode.
     PassManager inner(module.getContext());
     inner.addPass(createCheckUcodePass());
     if (failed(inner.run(module)))
@@ -503,94 +442,56 @@ void TransformUcodeToLoadOpPass::runOnOperation() {
 
 
 //===============================================================================//
-//Minor Transformations on the General Structure 
-//(kinda useless. Might get turned into the actual merge ucode)
+//Merges duplicate ucodes, moves ucode to top of body.
 void TransformGeneralStructurePass::runOnOperation() {
     ModuleOp module = getOperation();
 
-    llvm::SmallVector<Operation*> opSnapshot; 
-    module.walk([&](Operation *op) {
-        if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
-                vta::GemmOp, vta::AluOp, vta::FinishOp,
-                vta::LoadNoOp, vta::StoreNoOp>(op))
-            opSnapshot.push_back(op);
-    });
+    //Get the vta.func. CheckStructure already verified there's exactly one.
+    vta::FuncOp func;
+    module.walk([&](vta::FuncOp f) { func = f; });
+    if (!func) {
+        module.emitError("no vta.func found");
+        signalPassFailure();
+        return;
+    }
 
-        //  Merge duplicate ucodes. If records differ, error.
-        //  Keep the first one, erase the rest if identical.
-        llvm::SmallVector<vta::UcodeOp> ucodeSnapshot;
-        for (Operation *op : opSnapshot)
-            if (auto u = dyn_cast<vta::UcodeOp>(op))
-                ucodeSnapshot.push_back(u);
+    //Merge duplicate ucodes. Keep the first, erase the rest if identical.
+    llvm::SmallVector<vta::UcodeOp> ucodeSnapshot;
+    func.walk([&](vta::UcodeOp u) { ucodeSnapshot.push_back(u); });
 
-        if (ucodeSnapshot.size() > 1) {
-            Attribute reference = ucodeSnapshot[0].getRecordsAttr();
-            for (size_t i = 1; i < ucodeSnapshot.size(); i++) {
-                vta::UcodeOp op = ucodeSnapshot[i];
-                if (op.getRecordsAttr() == reference) {
-                    op.erase();
-                } else {
-                    op.emitOpError("different micro: cannot merge ucodes with different Records");
-                    signalPassFailure();
-                    return;
-                }
+    if (ucodeSnapshot.size() > 1) {
+        Attribute reference = ucodeSnapshot[0].getRecordsAttr();
+        for (size_t i = 1; i < ucodeSnapshot.size(); i++) {
+            vta::UcodeOp op = ucodeSnapshot[i];
+            if (op.getRecordsAttr() == reference) {
+                op.erase();
+            } else {
+                op.emitOpError("different micro: cannot merge ucodes with different Records");
+                signalPassFailure();
+                return;
             }
         }
+    }
 
-        // Move ucode to top of the function body, if not already there.
-        func::FuncOp func;
-        module.walk([&](func::FuncOp f) { func = f; });
-        if (!func) {
-            module.emitError("no func.func found");
-            signalPassFailure();
-            return;
-        }
+    //Move ucode to top of the function body, if not already there.
+    Block &body = func.getBody().front();
+    vta::UcodeOp theUcode;
+    for (Operation &op : body)
+        if (auto u = dyn_cast<vta::UcodeOp>(&op))
+            theUcode = u;
 
-        Block &body = func.getBody().front();
-        vta::UcodeOp theUcode;
-        for (Operation &op : body)
-            if (auto u = dyn_cast<vta::UcodeOp>(&op))
-                theUcode = u;
+    if (theUcode) {
+        Operation *firstOp = &body.front();
+        if (firstOp != theUcode.getOperation())
+            theUcode->moveBefore(firstOp);
+    }
 
-        if (theUcode) {
-            Operation *firstOp = &body.front();
-            if (firstOp != theUcode.getOperation())
-                theUcode->moveBefore(firstOp);
-        }
-
-        // Find the first vta.finish. Erase everything after it.
-        // If none exists, insert one before the terminator.
-        bool foundFinish = false;
-        for (auto it = body.begin(); it != body.end(); ) {
-            if (isa<vta::FinishOp>(*it)) {
-                foundFinish = true;
-                ++it;
-                while (it != body.end()) {
-                    if (it->hasTrait<OpTrait::IsTerminator>())
-                        break;
-                    Operation *toErase = &*it;
-                    ++it;
-                    toErase->erase();
-                        }
-                break;
-            }
-            ++it;
-        }
-
-        if (!foundFinish) {
-            // Insert a finish before the function's terminator (func.return).
-            Operation *terminator = body.getTerminator();
-            OpBuilder builder(terminator);
-            builder.create<vta::FinishOp>(terminator->getLoc());
-        }
-
-        // Call the ucode-load pass.
-        PassManager inner(module.getContext());
-        inner.addPass(createTransformUcodeToLoadOpPass());
-        if (failed(inner.run(module)))
-            signalPassFailure();
+    //Call the ucode-load pass.
+    PassManager inner(module.getContext());
+    inner.addPass(createTransformUcodeToLoadOpPass());
+    if (failed(inner.run(module)))
+        signalPassFailure();
 }
-
 
 
 
@@ -639,7 +540,6 @@ std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass() {
 std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     TransformGeneralStructurePass *pass = new TransformGeneralStructurePass();
     return std::unique_ptr<Pass>(pass);}
-
 
 
 

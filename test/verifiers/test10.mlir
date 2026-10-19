@@ -1,11 +1,11 @@
 // RUN: not %vta-opt %s --vta-check-structure 2>&1 | %FileCheck %s
 
-// CHECK: expected exactly one vta.finish
+// CHECK: must be the last operation in the parent block
 
-func.func @test() {
+vta.func @test() {
   vta.ucode {Records = [[0, 0, 0]]}
   vta.load mem INP, sram 0, dram 0, size 1 x 1, stride 1, pad 0, 0, 0, 0
   vta.finish
   vta.finish
-  return
+  
 }

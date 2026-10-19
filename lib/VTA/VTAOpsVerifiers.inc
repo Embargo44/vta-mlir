@@ -1,4 +1,31 @@
 //Verifier implementations. Fills in verify() declared by VTAOps.td.
+//===----------------------------------------------------------------------===//
+// FuncOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult FuncOp::verify() {
+    //Body must not be empty. At minimum a vta.finish terminator.
+    Block &body = getBody().front();
+    if (body.empty()) {
+        return emitOpError("function body must not be empty");
+    }
+
+    //Every op in the body must be a VTA op (except the terminator, which
+    //is vta.finish and is also a VTA op).
+    for (Operation &op : body) {
+        if (op.getDialect() != getOperation()->getDialect()) {
+            return op.emitOpError("expected only VTA ops inside vta.func");
+        }
+    }
+
+    //Terminator must be vta.finish.
+    Operation *terminator = body.getTerminator();
+    if (!isa<vta::FinishOp>(terminator)) {
+        return terminator->emitOpError("expected vta.finish as terminator");
+    }
+
+    return success();
+}
 
 //===----------------------------------------------------------------------===//
 // LoadOp

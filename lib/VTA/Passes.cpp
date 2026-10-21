@@ -180,29 +180,34 @@ void CheckUcodePass::runOnOperation() {
     
     // Map an op to its pipeline role
     static OpKind kindOf(Operation *op) {
-        if (isa<vta::LoadOp>(op))   return OpKind::Load;
-        if (isa<vta::StoreOp>(op))  return OpKind::Store;
-        if (isa<vta::GemmOp>(op))   return OpKind::Compute;
-        if (isa<vta::AluOp>(op))    return OpKind::Compute;
-        if (isa<vta::FinishOp>(op)) return OpKind::Finish;
-        return OpKind::None;
+    if (auto load = dyn_cast<vta::LoadOp>(op)) {
+        uint8_t mem_type = load.getMemoryType();
+        // UOP (0) and ACC (3) route to the Compute core
+        if (mem_type == 0 || mem_type == 3) return OpKind::Compute;
+        // INP (2) and WGT (1) route to the Load core
+        return OpKind::Load;
     }
+    if (isa<vta::StoreOp>(op)) return OpKind::Store;
+    if (isa<vta::GemmOp, vta::AluOp>(op)) return OpKind::Compute;
+    if (isa<vta::FinishOp>(op)) return OpKind::Finish;
+    return OpKind::None;
+}
 
     // Load only talks to compute (next side), store only on prev. Compute touches all four.
     static bool isFlagLive(OpKind k, Flag f) {
-        switch (k) {
-        case OpKind::Load:
-            return f == Flag::WaitNext || f == Flag::SignalNext;
-        case OpKind::Compute:
-            return true;
-        case OpKind::Store:
-            return f == Flag::WaitPrev || f == Flag::SignalPrev;
-        case OpKind::Finish:
-        case OpKind::None:
-            return false;
-        }
+    switch (k) {
+    case OpKind::Load:
+        return f == Flag::WaitNext || f == Flag::SignalNext;
+    case OpKind::Compute:
+        return true; // ACC loads and ALUs can use all four flags
+    case OpKind::Store:
+        return f == Flag::WaitPrev || f == Flag::SignalPrev;
+    case OpKind::Finish:
+    case OpKind::None:
         return false;
     }
+    return false;
+}
 
     
     // Read a flag from an op, whatever its concrete type.

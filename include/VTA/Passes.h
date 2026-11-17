@@ -18,8 +18,8 @@ std::unique_ptr<::mlir::Pass> createCheckStructurePass();
 std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass();
 std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass();
 std::unique_ptr<::mlir::Pass> createCheckDependancyPass();
-std::unique_ptr<::mlir::Pass> createTransformNoOpsPass();
 std::unique_ptr<::mlir::Pass> createCheckUcodePass();
+std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass();
 
 } // namespace vta
 } // namespace mlir

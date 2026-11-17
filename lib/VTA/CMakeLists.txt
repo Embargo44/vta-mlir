@@ -8,6 +8,7 @@ add_mlir_dialect_library(MLIRVTA
 
         DEPENDS
         MLIRVTAOpsIncGen
+        MLIRVTAInterfacesIncGen
         MLIRVTAPassIncGen
 
         LINK_LIBS PUBLIC

@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
 
 
 
-~/vta-mlir/build/bin/vta-translate ~/Desktop/test.mlir --vta-binary -o ~/Desktop/out.bin
-~/vta-mlir/run_sim ~/Desktop/out.bin ~/Desktop/test.data
+~/vta-mlir/build/bin/vta-translate /mnt/c/Users/LordFasha23/Desktop/test.mlir --vta-binary -o /mnt/c/Users/LordFasha23/Desktop/out.bin
+~/vta-mlir/run_sim /mnt/c/Users/LordFasha23/Desktop/out.bin /mnt/c/Users/LordFasha23/Desktop/test.data
 
 */

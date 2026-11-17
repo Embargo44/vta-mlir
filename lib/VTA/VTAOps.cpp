@@ -3,6 +3,8 @@
 //Includes Misc stuff                                                                                             
 //======================================================================================================================//
 
+
+
 //custom description file for hardware
 #include "VTA/CustomHardwareDescription.h"
 
@@ -24,6 +26,9 @@ static void printMemoryType(OpAsmPrinter &p, Operation *op, IntegerAttr attr);
 
 //Pulls in builders, getters, and verify() stubs for every op in VTAOps.td
 #define GET_OP_CLASSES
+
+//Needed for the interfaces
+#include "VTA/VTAInterfaces.cpp.inc"
 #include "VTA/VTAOps.cpp.inc"
 
 

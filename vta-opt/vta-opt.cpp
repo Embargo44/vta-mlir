@@ -38,8 +38,6 @@ int main(int argc, char **argv) {
 
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
       return mlir::vta::createTransformUcodeToLoadOpPass();  });
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-      return mlir::vta::createTransformNoOpsPass(); }); 
 
 
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> { 
@@ -48,6 +46,9 @@ int main(int argc, char **argv) {
       
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
       return mlir::vta::createTransformGeneralStructurePass();  }); 
+
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+      return mlir::vta::createTransformInsertDummyFinishLoadPass();  }); 
 
 
   

@@ -193,10 +193,7 @@ LogicalResult UcodeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult LoadNoOp::verify() {
-    if (getPopPrevDep())
-        return emitOpError("PopPrevDep has no effect on a load no-op");
-    if (getPushPrevDep())
-        return emitOpError("PushPrevDep has no effect on a load no-op");
+
     return success();
 }
 
@@ -205,9 +202,6 @@ LogicalResult LoadNoOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult StoreNoOp::verify() {
-    if (getPopNextDep())
-        return emitOpError("PopNextDep has no effect on a store no-op");
-    if (getPushNextDep())
-        return emitOpError("PushNextDep has no effect on a store no-op");
+    
     return success();
 }

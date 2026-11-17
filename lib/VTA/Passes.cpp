@@ -53,11 +53,6 @@ struct CheckUcodePass : public CheckUcodeBase<CheckUcodePass> {
 //Inserts a vta.load that copies the ucode records into uop SRAM.
 struct TransformUcodeToLoadOpPass : public TransformUcodeToLoadOpBase<TransformUcodeToLoadOpPass> {
     void runOnOperation() override;}; 
-//========================================================================================================================//
-//Rewrites load_noop / store_noop into real zero-size LoadOp / StoreOp.
-struct TransformNoOpsPass : public TransformNoOpsBase<TransformNoOpsPass> {
-    void runOnOperation() override;};
-
 
 //========================================================================================================================//
 //Scans the token queues for balance, dead flags, and unreachable finish.
@@ -65,9 +60,14 @@ struct CheckDependancyPass : public CheckDependancyBase<CheckDependancyPass> {
     void runOnOperation() override;};   
 
 //========================================================================================================================//
-//Merges duplicate ucodes, moves ucode to top of body.
+//Merges duplicate ucodes, moves ucode to top of body. (kinda useless right now)
 struct TransformGeneralStructurePass : public TransformGeneralStructureBase<TransformGeneralStructurePass> {
     void runOnOperation() override;};
+
+//========================================================================================================================//
+//Inserts a dummy ACC load before finish to wait for the store core.
+struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
+    void runOnOperation() override;};    
    
 
 
@@ -93,10 +93,9 @@ void CheckStructurePass::runOnOperation() {
 
     // At least one vta.load.
     bool hasLoad = false;
-    module.walk([&](vta::LoadOp) { hasLoad = true; });
+    module.walk([&](vta::LoadOpInterface) { hasLoad = true; });
     if (!hasLoad) {
         module.emitError("module must contain at least one vta.load");
-        signalPassFailure();
         return;
     }
 
@@ -180,53 +179,73 @@ void CheckUcodePass::runOnOperation() {
     
     // Map an op to its pipeline role
     static OpKind kindOf(Operation *op) {
-    if (auto load = dyn_cast<vta::LoadOp>(op)) {
-        uint8_t mem_type = load.getMemoryType();
-        // UOP (0) and ACC (3) route to the Compute core
-        if (mem_type == 0 || mem_type == 3) return OpKind::Compute;
-        // INP (2) and WGT (1) route to the Load core
-        return OpKind::Load;
+        if (auto load = dyn_cast<vta::LoadOpInterface>(op)) {
+            uint8_t mem_type = load.getMemoryType();
+            // UOP (0) and ACC (3) route to the Compute core
+            if (mem_type == 0 || mem_type == 3) return OpKind::Compute;
+            // INP (2) and WGT (1) route to the Load core
+            return OpKind::Load;
+        }
+        if (isa<vta::StoreOpInterface>(op)) return OpKind::Store;
+        if (isa<vta::GemmOpInterface, vta::AluOpInterface>(op)) return OpKind::Compute;
+        if (isa<vta::FinishOp>(op)) return OpKind::Finish;
+        return OpKind::None;
     }
-    if (isa<vta::StoreOp>(op)) return OpKind::Store;
-    if (isa<vta::GemmOp, vta::AluOp>(op)) return OpKind::Compute;
-    if (isa<vta::FinishOp>(op)) return OpKind::Finish;
-    return OpKind::None;
-}
 
     // Load only talks to compute (next side), store only on prev. Compute touches all four.
     static bool isFlagLive(OpKind k, Flag f) {
-    switch (k) {
-    case OpKind::Load:
-        return f == Flag::WaitNext || f == Flag::SignalNext;
-    case OpKind::Compute:
-        return true; // ACC loads and ALUs can use all four flags
-    case OpKind::Store:
-        return f == Flag::WaitPrev || f == Flag::SignalPrev;
-    case OpKind::Finish:
-    case OpKind::None:
+        switch (k) {
+        case OpKind::Load:
+            return f == Flag::WaitNext || f == Flag::SignalNext;
+        case OpKind::Compute:
+            return true; // ACC loads and ALUs can use all four flags
+        case OpKind::Store:
+            return f == Flag::WaitPrev || f == Flag::SignalPrev;
+        case OpKind::Finish:
+        case OpKind::None:
+            return false;
+        }
         return false;
     }
-    return false;
-}
 
-    
     // Read a flag from an op, whatever its concrete type.
-    template <typename OpT>
-    static bool readFlagFor(OpT o, Flag f) {
-        switch (f) {
-        case Flag::WaitPrev:   return o.getPopPrevDep();
-        case Flag::WaitNext:   return o.getPopNextDep();
-        case Flag::SignalPrev: return o.getPushPrevDep();
-        case Flag::SignalNext: return o.getPushNextDep();
-        default: return false;
-        }
-    }
-
     static bool readFlag(Operation *op, Flag f) {
-        if (auto o = dyn_cast<vta::LoadOp>(op))  return readFlagFor(o, f);
-        if (auto o = dyn_cast<vta::StoreOp>(op)) return readFlagFor(o, f);
-        if (auto o = dyn_cast<vta::GemmOp>(op))  return readFlagFor(o, f);
-        if (auto o = dyn_cast<vta::AluOp>(op))   return readFlagFor(o, f);
+        if (auto o = dyn_cast<vta::LoadOpInterface>(op)) {
+            switch (f) {
+            case Flag::WaitPrev:   return o.getPopPrevDep();
+            case Flag::WaitNext:   return o.getPopNextDep();
+            case Flag::SignalPrev: return o.getPushPrevDep();
+            case Flag::SignalNext: return o.getPushNextDep();
+            default: return false;
+            }
+        }
+        if (auto o = dyn_cast<vta::StoreOpInterface>(op)) {
+            switch (f) {
+            case Flag::WaitPrev:   return o.getPopPrevDep();
+            case Flag::WaitNext:   return o.getPopNextDep();
+            case Flag::SignalPrev: return o.getPushPrevDep();
+            case Flag::SignalNext: return o.getPushNextDep();
+            default: return false;
+            }
+        }
+        if (auto o = dyn_cast<vta::GemmOpInterface>(op)) {
+            switch (f) {
+            case Flag::WaitPrev:   return o.getPopPrevDep();
+            case Flag::WaitNext:   return o.getPopNextDep();
+            case Flag::SignalPrev: return o.getPushPrevDep();
+            case Flag::SignalNext: return o.getPushNextDep();
+            default: return false;
+            }
+        }
+        if (auto o = dyn_cast<vta::AluOpInterface>(op)) {
+            switch (f) {
+            case Flag::WaitPrev:   return o.getPopPrevDep();
+            case Flag::WaitNext:   return o.getPopNextDep();
+            case Flag::SignalPrev: return o.getPushPrevDep();
+            case Flag::SignalNext: return o.getPushNextDep();
+            default: return false;
+            }
+        }
         return false;
     }
 
@@ -404,47 +423,6 @@ void TransformUcodeToLoadOpPass::runOnOperation() {
     });                                                                     
 }
 
-//===============================================================================//
-//Rewrites load_noop / store_noop into real zero-size LoadOp / StoreOp.
- void TransformNoOpsPass::runOnOperation() {
-    ModuleOp module = getOperation();
-
-    llvm::SmallVector<Operation*> noopSnapshot;
-    module.walk([&](Operation *op) {
-        if (isa<vta::LoadNoOp, vta::StoreNoOp>(op))
-            noopSnapshot.push_back(op);
-    });
-
-    for (Operation *op : noopSnapshot) {
-        OpBuilder builder(op);
-
-        if (auto ln = dyn_cast<vta::LoadNoOp>(op)) {
-            builder.create<vta::LoadOp>(
-                ln.getLoc(),
-                ln.getPopPrevDep(), ln.getPopNextDep(),
-                ln.getPushPrevDep(), ln.getPushNextDep(),
-                (uint8_t)VTA_MEM_INP,
-                (uint16_t)0, (uint32_t)0,
-                (uint16_t)0, (uint16_t)0, (uint16_t)0,
-                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0);
-        } else if (auto sn = dyn_cast<vta::StoreNoOp>(op)) {
-            builder.create<vta::StoreOp>(
-                sn.getLoc(),
-                sn.getPopPrevDep(), sn.getPopNextDep(),
-                sn.getPushPrevDep(), sn.getPushNextDep(),
-                (uint8_t)VTA_MEM_OUT,
-                (uint16_t)0, (uint32_t)0,
-                (uint16_t)0, (uint16_t)0, (uint16_t)0,
-                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0);
-        }
-
-        op->erase();
-    
-    }
-}  
-
-
-
 
 //===============================================================================//
 //Merges duplicate ucodes, moves ucode to top of body.
@@ -499,6 +477,50 @@ void TransformGeneralStructurePass::runOnOperation() {
 }
 
 
+//===============================================================================//
+//Inserts a dummy ACC load before finish to wait for the store core.
+void TransformInsertDummyFinishLoadPass::runOnOperation() {
+    ModuleOp module = getOperation();
+
+    module.walk([&](vta::FuncOp funcOp) {
+        Block &body = funcOp.getBody().front();
+        
+        // Find the finish op (which is the terminator)
+        Operation *finishOp = body.getTerminator();
+        if (!isa<vta::FinishOp>(finishOp)) return;
+
+        // Look at the op right before finish
+        Operation *prevOp = finishOp->getPrevNode();
+        if (!prevOp) return;
+
+        // If it's a Store, ensure it has PushPrevDep = true
+        if (auto storeOp = dyn_cast<vta::StoreOp>(prevOp)) {
+            OpBuilder builder(storeOp);
+            auto newStore = builder.create<vta::StoreOp>(
+                storeOp.getLoc(),
+                storeOp.getPopPrevDep(), storeOp.getPopNextDep(),
+                true,                     // <--- 3rd arg: pushPrevDep = true
+                storeOp.getPushNextDep(), // <--- 4th arg: keep original
+                storeOp.getMemoryType(), storeOp.getSramBase(), storeOp.getDramBase(),
+                storeOp.getYSize(), storeOp.getXSize(), storeOp.getXStride(),
+                storeOp.getYPad0(), storeOp.getYPad1(), storeOp.getXPad0(), storeOp.getXPad1()
+            );
+            storeOp.erase();
+            
+            // Insert the dummy load after the new store, before finish
+            OpBuilder dummyBuilder(newStore);
+            dummyBuilder.setInsertionPointAfter(newStore);
+            dummyBuilder.create<vta::LoadOp>(
+                newStore.getLoc(),
+                false, true, false, false, // <--- 2nd arg: popNextDep = true
+                (uint8_t)3, // VTA_MEM_ACC
+                (uint16_t)0, (uint32_t)0,
+                (uint16_t)0, (uint16_t)0, (uint16_t)0,
+                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0
+            );
+        } 
+    });
+}
 
 
 
@@ -531,10 +553,6 @@ std::unique_ptr<::mlir::Pass> createCheckDependancyPass() {
 
 
 //===============================================================================//
-std::unique_ptr<::mlir::Pass> createTransformNoOpsPass() {
-    TransformNoOpsPass *pass = new TransformNoOpsPass();
-    return std::unique_ptr<Pass>(pass);}
-//===============================================================================//
 std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass() {
     TransformUcodeToLoadOpPass *pass = new TransformUcodeToLoadOpPass();
     return std::unique_ptr<Pass>(pass);}
@@ -545,6 +563,11 @@ std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass() {
 std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     TransformGeneralStructurePass *pass = new TransformGeneralStructurePass();
     return std::unique_ptr<Pass>(pass);}
+
+//===============================================================================//
+std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass() {
+    TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
+    return std::unique_ptr<Pass>(pass);}    
 
 
 

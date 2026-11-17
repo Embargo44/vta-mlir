@@ -42,12 +42,12 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
     //Pass pipeline. Order matters 
     mlir::PassManager pm(module.getContext());
 
-    //pm.addPass(vta::createTransformGeneralStructurePass());
-    pm.addPass(vta::createTransformNoOpsPass());
+    //pm.addPass(vta::createTransformGeneralStructurePass());;
 
     pm.addPass(vta::createTransformUcodeToLoadOpPass()); 
     pm.addPass(vta::createCheckStructurePass());
-    //pm.addPass(vta::createCheckUcodePass());   
+    //pm.addPass(vta::createCheckUcodePass());
+    pm.addPass(vta::createTransformInsertDummyFinishLoadPass());   
     
     pm.addPass(vta::createCheckDependancyPass());
         if (mlir::failed(pm.run(module)))
@@ -65,9 +65,9 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
     //binary form. The struct layouts come from CustomHardwareDescription.h
     //and must match the simulator's view of the same bytes.
     module.walk([&](Operation *innerOp) {
-        if (auto loadOp = dyn_cast<vta::LoadOp>(innerOp)) {
+        if (auto loadOp = dyn_cast<vta::LoadOpInterface>(innerOp)) {
             VTAMemInsn insn = {};    
-            insn.opcode         = VTA_OP_LOAD;
+            insn.opcode         = loadOp.getOpcode();
             insn.pop_prev_dep   = loadOp.getPopPrevDep();
             insn.pop_next_dep   = loadOp.getPopNextDep();
             insn.push_prev_dep  = loadOp.getPushPrevDep();
@@ -88,9 +88,9 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             std::memcpy(buf, &insn, sizeof(VTAMemInsn));
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
         }
-        else if (auto storeOp = dyn_cast<vta::StoreOp>(innerOp)) {
+        else if (auto storeOp = dyn_cast<vta::StoreOpInterface>(innerOp)) {
             VTAMemInsn insn = {};
-            insn.opcode         = VTA_OP_STORE;
+            insn.opcode         = storeOp.getOpcode();
             insn.pop_prev_dep   = storeOp.getPopPrevDep();
             insn.pop_next_dep   = storeOp.getPopNextDep();
             insn.push_prev_dep  = storeOp.getPushPrevDep();
@@ -110,9 +110,9 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             std::memcpy(buf, &insn, sizeof(VTAMemInsn));
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
         }
-        else if (auto gemmOp = dyn_cast<vta::GemmOp>(innerOp)) {
+        else if (auto gemmOp = dyn_cast<vta::GemmOpInterface>(innerOp)) {
             VTAGemInsn insn = {};
-            insn.opcode         = VTA_OP_GEMM;
+            insn.opcode         = gemmOp.getOpcode();
             insn.pop_prev_dep   = gemmOp.getPopPrevDep();
             insn.pop_next_dep   = gemmOp.getPopNextDep();
             insn.push_prev_dep  = gemmOp.getPushPrevDep();
@@ -133,9 +133,9 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             std::memcpy(buf, &insn, sizeof(VTAGemInsn));
             insn_bytes.insert(insn_bytes.end(), buf, buf + 16);
         }
-        else if (auto aluOp = dyn_cast<vta::AluOp>(innerOp)) {
+        else if (auto aluOp = dyn_cast<vta::AluOpInterface>(innerOp)) {
             VTAAluInsn insn = {};
-            insn.opcode         = VTA_OP_ALU;
+            insn.opcode         = aluOp.getOpcode();
             insn.pop_prev_dep   = aluOp.getPopPrevDep();
             insn.pop_next_dep   = aluOp.getPopNextDep();
             insn.push_prev_dep  = aluOp.getPushPrevDep();
@@ -249,7 +249,7 @@ cd ~/vta-mlir
 rm -rf build
 mkdir build
 cd build
-cmake ..
+cmake .. -DMLIR_DIR=/usr/lib/llvm-15/lib/cmake/mlir -DLLVM_EXTERNAL_LIT=$(which lit)
 make 
 
 */

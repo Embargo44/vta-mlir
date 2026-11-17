@@ -9,12 +9,16 @@
 #ifndef VTA_VTAOPS_H
 #define VTA_VTAOPS_H
 
+#include "VTA/CustomHardwareDescription.h"
+
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+
+#include "VTA/VTAInterfaces.h.inc"
 
 #define GET_OP_CLASSES
 #include "VTA/VTAOps.h.inc"

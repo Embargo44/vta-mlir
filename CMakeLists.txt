@@ -29,10 +29,6 @@ include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
 
-if(MLIR_ENABLE_BINDINGS_PYTHON)
-  include(MLIRDetectPythonEnv)
-  mlir_configure_python_dev_packages()
-endif()
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})

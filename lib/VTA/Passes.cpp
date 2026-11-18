@@ -113,8 +113,8 @@ void CheckUcodePass::runOnOperation() {
     //walk
     llvm::SmallVector<Operation*> opSnapshot; //Just a snapshot
     module.walk([&](Operation *op) {
-        if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOp,
-                vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
+        if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOpInterface,
+        vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
             opSnapshot.push_back(op);
     });
 
@@ -150,14 +150,14 @@ void CheckUcodePass::runOnOperation() {
     // Every gemm/alu's UopEnd fits the ucode size.
     unsigned n = theUcode.getRecords().size();
     for (Operation *op : opSnapshot) {
-        if (auto g = dyn_cast<vta::GemmOp>(op)) {
+        if (auto g = dyn_cast<vta::GemmOpInterface>(op)) {
             if (g.getUopEnd() > n) {
                 g.emitOpError("UopEnd exceeds ucode record count");
                 signalPassFailure();
                 return;
             }
         }
-        if (auto a = dyn_cast<vta::AluOp>(op)) {
+        if (auto a = dyn_cast<vta::AluOpInterface>(op)) {
             if (a.getUopEnd() > n) {
                 a.emitOpError("UopEnd exceeds ucode record count");
                 signalPassFailure();
@@ -278,8 +278,8 @@ void CheckUcodePass::runOnOperation() {
         //walk
         llvm::SmallVector<Operation*> opSnapshot;//// Snapshot of VTA ops in program order.
         module.walk([&](Operation *op) {
-            if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOp,
-                    vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
+            if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOpInterface,
+        vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
                 opSnapshot.push_back(op);
         });
 

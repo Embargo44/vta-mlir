@@ -1,8 +1,147 @@
-//Verifier implementations. Fills in verify() declared by VTAOps.td.
-//===----------------------------------------------------------------------===//
-// FuncOp
-//===----------------------------------------------------------------------===//
 
+//Verifier implementations. Fills in verify() declared by VTAOps.td.
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                 SHARED VERIFICATION Methods
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static LogicalResult verifyLoad(LoadOpInterface load) {
+    Operation *op = load.getOperation();
+
+    if (load.getMemoryType() > 3)
+        return op->emitOpError("MemoryType must be 0-3 (UOP, WGT, INP, ACC)");
+    if (load.getYPad0() > 15)
+        return op->emitOpError("YPad0 must be 0-15");
+    if (load.getYPad1() > 15)
+        return op->emitOpError("YPad1 must be 0-15");
+    if (load.getXPad0() > 15)
+        return op->emitOpError("XPad0 must be 0-15");
+    if (load.getXPad1() > 15)
+        return op->emitOpError("XPad1 must be 0-15");
+
+    // Buffer bounds: SramBase + total elements must fit the SRAM depth.
+    int64_t extent = (int64_t)(load.getYSize() + load.getYPad0() + load.getYPad1())
+                   * (int64_t)(load.getXSize() + load.getXPad0() + load.getXPad1());
+    int64_t depth;
+    switch (load.getMemoryType()) {
+        case 0: depth = 1 << VTA_LOG_UOP_BUFF_DEPTH; break;
+        case 1: depth = 1 << VTA_LOG_WGT_BUFF_DEPTH; break;
+        case 2: depth = 1 << VTA_LOG_INP_BUFF_DEPTH; break;
+        case 3: depth = 1 << VTA_LOG_ACC_BUFF_DEPTH; break;
+        default: return success();
+    }
+    if ((int64_t)load.getSramBase() + extent > depth)
+        return op->emitOpError("load exceeds SRAM buffer bounds");
+
+    return success();
+}
+
+static LogicalResult verifyStore(StoreOpInterface store) {
+    Operation *op = store.getOperation();
+
+    if (store.getMemoryType() != 4)
+        return op->emitOpError("MemoryType must be 4 (OUT)");
+    if (store.getYPad0() > 15)
+        return op->emitOpError("YPad0 must be 0-15");
+    if (store.getYPad1() > 15)
+        return op->emitOpError("YPad1 must be 0-15");
+    if (store.getXPad0() > 15)
+        return op->emitOpError("XPad0 must be 0-15");
+    if (store.getXPad1() > 15)
+        return op->emitOpError("XPad1 must be 0-15");
+
+    // Buffer bounds on the OUT buffer.
+    int64_t extent = (int64_t)(store.getYSize() + store.getYPad0() + store.getYPad1())
+                   * (int64_t)(store.getXSize() + store.getXPad0() + store.getXPad1());
+    int64_t depth = 1 << VTA_LOG_OUT_BUFF_DEPTH;
+    if ((int64_t)store.getSramBase() + extent > depth)
+        return op->emitOpError("store exceeds SRAM buffer bounds");
+
+    return success();
+}
+
+static LogicalResult verifyGemm(GemmOpInterface gemm) {
+    Operation *op = gemm.getOperation();
+
+    if (gemm.getUopBgn() > 127)
+        return op->emitOpError("UopBgn must be 0-127");
+    if (gemm.getUopBgn() > gemm.getUopEnd())
+        return op->emitOpError("UopBgn must be <= UopEnd");
+    if (!gemm.getResetReg() && gemm.getUopEnd() <= gemm.getUopBgn())
+        return op->emitOpError("UopEnd must be > UopBgn when ResetReg is false");
+    if (gemm.getIterOut() < 1)
+        return op->emitOpError("IterOut must be >= 1");
+    if (gemm.getIterIn() < 1)
+        return op->emitOpError("IterIn must be >= 1");
+    if (gemm.getIterOut() > 16383)
+        return op->emitOpError("IterOut must be <= 16383");
+    if (gemm.getIterIn() > 16383)
+        return op->emitOpError("IterIn must be <= 16383");
+    if (gemm.getDstFactorOut() > 127)
+        return op->emitOpError("DstFactorOut must be 0-127");
+    if (gemm.getDstFactorIn() > 127)
+        return op->emitOpError("DstFactorIn must be 0-127");
+    if (gemm.getSrcFactorOut() > 127)
+        return op->emitOpError("SrcFactorOut must be 0-127");
+    if (gemm.getSrcFactorIn() > 127)
+        return op->emitOpError("SrcFactorIn must be 0-127");
+    if (gemm.getWgtFactorOut() > 127)
+        return op->emitOpError("WgtFactorOut must be 0-127");
+    if (gemm.getWgtFactorIn() > 127)
+        return op->emitOpError("WgtFactorIn must be 0-127");
+
+    return success();
+}
+
+static LogicalResult verifyAlu(AluOpInterface alu) {
+    Operation *op = alu.getOperation();
+
+    if (alu.getUopBgn() > 127)
+        return op->emitOpError("UopBgn must be 0-127");
+    if (alu.getUopBgn() > alu.getUopEnd())
+        return op->emitOpError("UopBgn must be <= UopEnd");
+    if (!alu.getResetReg() && alu.getUopEnd() <= alu.getUopBgn())
+        return op->emitOpError("UopEnd must be > UopBgn when ResetReg is false");
+    if (alu.getIterOut() < 1)
+        return op->emitOpError("IterOut must be >= 1");
+    if (alu.getIterIn() < 1)
+        return op->emitOpError("IterIn must be >= 1");
+    if (alu.getIterOut() > 16383)
+        return op->emitOpError("IterOut must be <= 16383");
+    if (alu.getIterIn() > 16383)
+        return op->emitOpError("IterIn must be <= 16383");
+    if (alu.getDstFactorOut() > 127)
+        return op->emitOpError("DstFactorOut must be 0-127");
+    if (alu.getDstFactorIn() > 127)
+        return op->emitOpError("DstFactorIn must be 0-127");
+    if (alu.getSrcFactorOut() > 127)
+        return op->emitOpError("SrcFactorOut must be 0-127");
+    if (alu.getSrcFactorIn() > 127)
+        return op->emitOpError("SrcFactorIn must be 0-127");
+    if (alu.getAluOpcode() > 4)
+        return op->emitOpError("AluOpcode must be 0-4 (MIN, MAX, ADD, SHR, MUL)");
+    if (alu.getUseImm() && alu.getAluOpcode() == 4) {
+        if (alu.getImm() >= (1 << VTA_MUL_ARG_BIT_WIDTH))
+            return op->emitOpError("MUL immediate must fit in 8 bits");
+    }
+
+    return success();
+}
+
+
+
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//                                   Other Verification Methods
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// FuncOp
 LogicalResult FuncOp::verify() {
     //Body must not be empty. At minimum a vta.finish terminator.
     Block &body = getBody().front();
@@ -27,139 +166,8 @@ LogicalResult FuncOp::verify() {
     return success();
 }
 
-//===----------------------------------------------------------------------===//
-// LoadOp
-//===----------------------------------------------------------------------===//
 
-LogicalResult LoadOp::verify() {
-    if (getMemoryType() > 3)
-        return emitOpError("MemoryType must be 0-3 (UOP, WGT, INP, ACC)");
-    if (getYPad0() > 15)
-        return emitOpError("YPad0 must be 0-15");
-    if (getYPad1() > 15)
-        return emitOpError("YPad1 must be 0-15");
-    if (getXPad0() > 15)
-        return emitOpError("XPad0 must be 0-15");
-    if (getXPad1() > 15)
-        return emitOpError("XPad1 must be 0-15");
-
-    // Buffer bounds: SramBase + total elements must fit the SRAM depth.
-    int64_t extent = (int64_t)(getYSize() + getYPad0() + getYPad1())
-                   * (int64_t)(getXSize() + getXPad0() + getXPad1());
-    int64_t depth;
-    switch (getMemoryType()) {
-        case 0: depth = 1 << VTA_LOG_UOP_BUFF_DEPTH; break;
-        case 1: depth = 1 << VTA_LOG_WGT_BUFF_DEPTH; break;
-        case 2: depth = 1 << VTA_LOG_INP_BUFF_DEPTH; break;
-        case 3: depth = 1 << VTA_LOG_ACC_BUFF_DEPTH; break;
-        default: return success();
-    }
-    if ((int64_t)getSramBase() + extent > depth)
-        return emitOpError("load exceeds SRAM buffer bounds");
-
-    return success();
-}
-
-//===----------------------------------------------------------------------===//
-// StoreOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult StoreOp::verify() {
-    if (getMemoryType() != 4)
-        return emitOpError("MemoryType must be 4 (OUT)");
-    if (getYPad0() > 15)
-        return emitOpError("YPad0 must be 0-15");
-    if (getYPad1() > 15)
-        return emitOpError("YPad1 must be 0-15");
-    if (getXPad0() > 15)
-        return emitOpError("XPad0 must be 0-15");
-    if (getXPad1() > 15)
-        return emitOpError("XPad1 must be 0-15");
-
-    // Buffer bounds on the OUT buffer.
-    int64_t extent = (int64_t)(getYSize() + getYPad0() + getYPad1())
-                   * (int64_t)(getXSize() + getXPad0() + getXPad1());
-    int64_t depth = 1 << VTA_LOG_OUT_BUFF_DEPTH;
-    if ((int64_t)getSramBase() + extent > depth)
-        return emitOpError("store exceeds SRAM buffer bounds");
-
-    return success();
-}
-
-//===----------------------------------------------------------------------===//
-// GemmOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult GemmOp::verify() {
-    if (getUopBgn() > 127)
-        return emitOpError("UopBgn must be 0-127");
-    if (getUopBgn() > getUopEnd())
-        return emitOpError("UopBgn must be <= UopEnd");
-    if (!getResetReg() && getUopEnd() <= getUopBgn())
-        return emitOpError("UopEnd must be > UopBgn when ResetReg is false");
-    if (getIterOut() < 1)
-        return emitOpError("IterOut must be >= 1");
-    if (getIterIn() < 1)
-        return emitOpError("IterIn must be >= 1");
-    if (getIterOut() > 16383)
-        return emitOpError("IterOut must be <= 16383");
-    if (getIterIn() > 16383)
-        return emitOpError("IterIn must be <= 16383");
-    if (getDstFactorOut() > 127)
-        return emitOpError("DstFactorOut must be 0-127");
-    if (getDstFactorIn() > 127)
-        return emitOpError("DstFactorIn must be 0-127");
-    if (getSrcFactorOut() > 127)
-        return emitOpError("SrcFactorOut must be 0-127");
-    if (getSrcFactorIn() > 127)
-        return emitOpError("SrcFactorIn must be 0-127");
-    if (getWgtFactorOut() > 127)
-        return emitOpError("WgtFactorOut must be 0-127");
-    if (getWgtFactorIn() > 127)
-        return emitOpError("WgtFactorIn must be 0-127");
-    return success();
-}
-
-//===----------------------------------------------------------------------===//
-// AluOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AluOp::verify() {
-    if (getUopBgn() > 127)
-        return emitOpError("UopBgn must be 0-127");
-    if (getUopBgn() > getUopEnd())
-        return emitOpError("UopBgn must be <= UopEnd");
-    if (!getResetReg() && getUopEnd() <= getUopBgn())
-        return emitOpError("UopEnd must be > UopBgn when ResetReg is false");
-    if (getIterOut() < 1)
-        return emitOpError("IterOut must be >= 1");
-    if (getIterIn() < 1)
-        return emitOpError("IterIn must be >= 1");
-    if (getIterOut() > 16383)
-        return emitOpError("IterOut must be <= 16383");
-    if (getIterIn() > 16383)
-        return emitOpError("IterIn must be <= 16383");
-    if (getDstFactorOut() > 127)
-        return emitOpError("DstFactorOut must be 0-127");
-    if (getDstFactorIn() > 127)
-        return emitOpError("DstFactorIn must be 0-127");
-    if (getSrcFactorOut() > 127)
-        return emitOpError("SrcFactorOut must be 0-127");
-    if (getSrcFactorIn() > 127)
-        return emitOpError("SrcFactorIn must be 0-127");
-    if (getAluOpcode() > 4)
-        return emitOpError("AluOpcode must be 0-4 (MIN, MAX, ADD, SHR, MUL)");
-    if (getUseImm() && getAluOpcode() == 4) {
-        if (getImm() >= (1 << VTA_MUL_ARG_BIT_WIDTH))
-            return emitOpError("MUL immediate must fit in 8 bits");
-    }
-
-    return success();
-}
-
-//===----------------------------------------------------------------------===//
 // UcodeOp
-//===----------------------------------------------------------------------===//
 
 LogicalResult UcodeOp::verify() {
     if (getRecords().empty())
@@ -188,36 +196,126 @@ LogicalResult UcodeOp::verify() {
     return success();
 }
 
-//===----------------------------------------------------------------------===//
-// Load CUSTOM OPS
-//===----------------------------------------------------------------------===//
 
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                 LoadOP CUSTOM
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+LogicalResult LoadOp::verify() {
+    return verifyLoad(*this);
+}
 LogicalResult LoadNoOp::verify() {
-
-    return success();
+    return verifyLoad(*this);
 }
 
 LogicalResult LoadUOPOp::verify() {
-    return success();
+    return verifyLoad(*this);
 }
 
 LogicalResult LoadWGTOp::verify() {
-    return success();
+    return verifyLoad(*this);
 }
 
 LogicalResult LoadINPOp::verify() {
-    return success();
+    return verifyLoad(*this);
 }
 
-LogicalResult LoadACCPop::verify() {
-    return success();
+LogicalResult LoadACCOp::verify() {
+    return verifyLoad(*this);
 }
 
-//===----------------------------------------------------------------------===//
-// StoreNoOp
-//===----------------------------------------------------------------------===//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                 StoreOP CUSTOM
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+LogicalResult StoreOp::verify() {
+    return verifyStore(*this);
+}
+
+LogicalResult StoreOUTOp::verify() {
+    return verifyStore(*this);
+}
 
 LogicalResult StoreNoOp::verify() {
-    
-    return success();
+    return verifyStore(*this);
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                ALU OP CUSTOM
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+LogicalResult AluOp::verify() {
+    return verifyAlu(*this);
+}
+LogicalResult AluMinImmOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluMaxImmOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluAddImmOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluShrImmOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluMulImmOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluMinOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluMaxOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluAddOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluShrOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluMulOp::verify() {
+    return verifyAlu(*this);
+}
+
+LogicalResult AluNoOp::verify() {
+    return verifyAlu(*this);
+}
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                 GemmOP CUSTOM
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+LogicalResult GemmOp::verify() {
+    return verifyGemm(*this);
+}
+
+LogicalResult GemmResetOp::verify() {
+    return verifyGemm(*this);
+}
+
+LogicalResult GemmNoResetOp::verify() {
+    return verifyGemm(*this);
+}
+
+LogicalResult GemmNoOp::verify() {
+    return verifyGemm(*this);
 }

@@ -1,3 +1,4 @@
+
 //======================================================================================================================// 
 //                                           TABLEGEN SOURCE                                                            //
 //======================================================================================================================//
@@ -341,7 +342,7 @@ def UcodeOp : VTA_Op<"ucode"> {
 //                                         LOAD OP CUSTOM
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-def LoadUOPOp : VTA_Load_Op<"load_UOP"> {
+class VTA_LoadBase<string mnemonic> : VTA_Load_Op<mnemonic> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -358,47 +359,6 @@ def LoadUOPOp : VTA_Load_Op<"load_UOP"> {
         DefaultValuedAttr<I8Attr, "0">:$XPad0,
         DefaultValuedAttr<I8Attr, "0">:$XPad1
     );
-
-    let extraClassDeclaration = [{
-        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
-        uint8_t getMemoryType() { return 0; }
-    }];
-
-    let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
-    let hasVerifier = 1;
-}
-
-def LoadWGTOp : VTA_Load_Op<"load_WGT"> {
-    let arguments = (ins
-        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
-        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
-        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
-        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride,
-        DefaultValuedAttr<I8Attr, "0">:$YPad0,
-        DefaultValuedAttr<I8Attr, "0">:$YPad1,
-        DefaultValuedAttr<I8Attr, "0">:$XPad0,
-        DefaultValuedAttr<I8Attr, "0">:$XPad1
-    );
-
-    let extraClassDeclaration = [{
-        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
-        uint8_t getMemoryType() { return 1; }
-    }];
 
     let results = (outs);
 
@@ -450,40 +410,26 @@ def LoadINPOp : VTA_Load_Op<"load_INP"> {
     let hasVerifier = 1;
 }
 
-def LoadACCPop : VTA_Load_Op<"load_ACC"> {
-    let arguments = (ins
-        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
-        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
-        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
-        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride,
-        DefaultValuedAttr<I8Attr, "0">:$YPad0,
-        DefaultValuedAttr<I8Attr, "0">:$YPad1,
-        DefaultValuedAttr<I8Attr, "0">:$XPad0,
-        DefaultValuedAttr<I8Attr, "0">:$XPad1
-    );
+def LoadUOPOp : VTA_LoadBase<"load_UOP"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 0; }
+    }];
+}
 
+def LoadWGTOp : VTA_LoadBase<"load_WGT"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 1; }
+    }];
+}
+
+def LoadACCOp : VTA_LoadBase<"load_ACC"> {
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
         uint8_t getMemoryType() { return 3; }
     }];
-
-    let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
-    let hasVerifier = 1;
 }
 
 def LoadNoOp : VTA_Load_Op<"load_NoOp"> {
@@ -520,134 +466,310 @@ def LoadNoOp : VTA_Load_Op<"load_NoOp"> {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 //                                         STORE OP CUSTOM
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-def StoreUOPOp : VTA_Store_Op<"store_UOP"> {
+def StoreOUTOp : VTA_Store_Op<"store_OUT"> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-
-        I16Attr:$SramBase,
+        DefaultValuedAttr<I16Attr, "0">:$SramBase,
         I32Attr:$DramBase,
-        I16Attr:$YSize,
+        DefaultValuedAttr<I16Attr, "1">:$YSize,
         I16Attr:$XSize,
-        I16Attr:$XStride
-    );
+        DefaultValuedAttr<I16Attr, "1">:$XStride,
+        DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        DefaultValuedAttr<I8Attr, "0">:$XPad1);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_STORE; }
-        uint8_t getMemoryType() { return 0; }
+        uint8_t getMemoryType() { return 4; }
     }];
 
     let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
+    let assemblyFormat = [{ `dram` $DramBase `,` `size` $XSize attr-dict }];
     let hasVerifier = 1;
 }
 
-def StoreWGTOp : VTA_Store_Op<"store_WGT"> {
+def StoreNoOp : VTA_Store_Op<"store_NoOp"> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride
-    );
+        // Default 4 (OUT), not 0 like LoadNoOp: the simulator rejects any other store type
+        DefaultValuedAttr<I8Attr, "4">:$MemoryType,
+        DefaultValuedAttr<I16Attr, "0">:$SramBase,
+        DefaultValuedAttr<I32Attr, "0">:$DramBase,
+        DefaultValuedAttr<I16Attr, "0">:$YSize,
+        DefaultValuedAttr<I16Attr, "0">:$XSize,
+        DefaultValuedAttr<I16Attr, "0">:$XStride,
+        DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        DefaultValuedAttr<I8Attr, "0">:$XPad1);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_STORE; }
-        uint8_t getMemoryType() { return 1; }
     }];
 
     let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
+    let assemblyFormat = "attr-dict";
     let hasVerifier = 1;
 }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                            ALU CUSTOM 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-def StoreINPOp : VTA_Store_Op<"store_INP"> {
+// Immediate form: dst = f(dst, Imm). SrcFactors are unused, so they are fixed to 0.
+class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride
-    );
-
-    let extraClassDeclaration = [{
-        uint8_t getOpcode() { return VTA_OPCODE_STORE; }
-        uint8_t getMemoryType() { return 2; }
-    }];
-
+        DefaultValuedAttr<I1Attr, "false">:$ResetReg,
+        I8Attr:$UopBgn,
+        I8Attr:$UopEnd,
+        DefaultValuedAttr<I16Attr, "1">:$IterOut,
+        DefaultValuedAttr<I16Attr, "1">:$IterIn,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        I16Attr:$Imm);
     let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
+    let assemblyFormat = [{ `imm` $Imm `,` `uop` $UopBgn `to` $UopEnd attr-dict }];
     let hasVerifier = 1;
 }
 
-def StoreACCPop : VTA_Store_Op<"store_ACC"> {
+class VTA_AluRegBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride
-    );
-
-    let extraClassDeclaration = [{
-        uint8_t getOpcode() { return VTA_OPCODE_STORE; }
-        uint8_t getMemoryType() { return 3; }
-    }];
-
+        DefaultValuedAttr<I1Attr, "false">:$ResetReg,
+        I8Attr:$UopBgn,
+        I8Attr:$UopEnd,
+        DefaultValuedAttr<I16Attr, "1">:$IterOut,
+        DefaultValuedAttr<I16Attr, "1">:$IterIn,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        DefaultValuedAttr<I16Attr, "0">:$Imm);
     let results = (outs);
-
-    let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
-        attr-dict
-    }];
-
+    let assemblyFormat = [{ `uop` $UopBgn `to` $UopEnd attr-dict }];
     let hasVerifier = 1;
 }
+
+// ----- immediate ops (AluOpcode: MIN 0, MAX 1, ADD 2, SHR 3, MUL 4) -----
+def AluMinImmOp : VTA_AluImmBase<"alu_MIN_imm"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 0; }
+        bool getUseImm() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+def AluMaxImmOp : VTA_AluImmBase<"alu_MAX_imm"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 1; }
+        bool getUseImm() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+def AluAddImmOp : VTA_AluImmBase<"alu_ADD_imm"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 2; }
+        bool getUseImm() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+def AluShrImmOp : VTA_AluImmBase<"alu_SHR_imm"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 3; }
+        bool getUseImm() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+def AluMulImmOp : VTA_AluImmBase<"alu_MUL_imm"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 4; }
+        bool getUseImm() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+
+// ----- register ops -----
+def AluMinOp : VTA_AluRegBase<"alu_MIN"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 0; }
+        bool getUseImm() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+def AluMaxOp : VTA_AluRegBase<"alu_MAX"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 1; }
+        bool getUseImm() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+def AluAddOp : VTA_AluRegBase<"alu_ADD"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 2; }
+        bool getUseImm() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+def AluShrOp : VTA_AluRegBase<"alu_SHR"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 3; }
+        bool getUseImm() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+def AluMulOp : VTA_AluRegBase<"alu_MUL"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+        uint8_t getAluOpcode() { return 4; }
+        bool getUseImm() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+
+// ----- no-op: empty uop range, only the dependency flags matter -----
+def AluNoOp : VTA_Alu_Op<"alu_NoOp"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$ResetReg,
+        DefaultValuedAttr<I8Attr, "0">:$UopBgn,
+        DefaultValuedAttr<I8Attr, "0">:$UopEnd,
+        DefaultValuedAttr<I16Attr, "1">:$IterOut,
+        DefaultValuedAttr<I16Attr, "1">:$IterIn,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        // Must stay a valid opcode (0-4): the simulator aborts on an unknown one even for an empty range
+        DefaultValuedAttr<I8Attr, "0">:$AluOpcode,
+        DefaultValuedAttr<I1Attr, "false">:$UseImm,
+        DefaultValuedAttr<I16Attr, "0">:$Imm);
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_ALU; }
+    }];
+    let results = (outs);
+    let assemblyFormat = "attr-dict";
+    let hasVerifier = 1;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                            GEMM CUSTOM 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Shared fields. ResetReg is fixed by each op (a method), everything else is a defaulted attribute.
+class VTA_GemmBase<string mnemonic> : VTA_Gemm_Op<mnemonic> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+        I8Attr:$UopBgn,
+        I8Attr:$UopEnd,
+        DefaultValuedAttr<I16Attr, "1">:$IterOut,
+        DefaultValuedAttr<I16Attr, "1">:$IterIn,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$WgtFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$WgtFactorIn);
+    let results = (outs);
+    let assemblyFormat = [{ `uop` $UopBgn `to` $UopEnd attr-dict }];
+    let hasVerifier = 1;
+}
+
+// Zero the ACC rows addressed by the uops. SrcFactor and WgtFactor are ignored by the simulator.
+def GemmResetOp : VTA_GemmBase<"gemm_Reset"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_GEMM; }
+        bool getResetReg() { return true; }
+    }];
+    let hasVerifier = 1;
+}
+
+// acc += inp . wgt
+def GemmNoResetOp : VTA_GemmBase<"gemm_NoReset"> {
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_GEMM; }
+        bool getResetReg() { return false; }
+    }];
+    let hasVerifier = 1;
+}
+
+// No-op: empty uop range, only the dependency flags matter.
+def GemmNoOp : VTA_Gemm_Op<"gemm_NoOp"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$ResetReg,
+        DefaultValuedAttr<I8Attr, "0">:$UopBgn,
+        DefaultValuedAttr<I8Attr, "0">:$UopEnd,
+        DefaultValuedAttr<I16Attr, "1">:$IterOut,
+        DefaultValuedAttr<I16Attr, "1">:$IterIn,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$DstFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        DefaultValuedAttr<I8Attr, "0">:$WgtFactorOut,
+        DefaultValuedAttr<I8Attr, "0">:$WgtFactorIn);
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_GEMM; }
+    }];
+    let results = (outs);
+    let assemblyFormat = "attr-dict";
+    let hasVerifier = 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

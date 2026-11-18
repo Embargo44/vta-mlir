@@ -47,11 +47,11 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
     pm.addPass(vta::createTransformUcodeToLoadOpPass()); 
     pm.addPass(vta::createCheckStructurePass());
     //pm.addPass(vta::createCheckUcodePass());
-    pm.addPass(vta::createTransformInsertDummyFinishLoadPass());   
+    //pm.addPass(vta::createTransformInsertDummyFinishLoadPass());   
     
     pm.addPass(vta::createCheckDependancyPass());
-        if (mlir::failed(pm.run(module)))
-            return failure();
+    if (mlir::failed(pm.run(module)))
+        return failure();
 
 
     //output buffers. insn_bytes->instruction region,

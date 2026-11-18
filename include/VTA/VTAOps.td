@@ -336,7 +336,157 @@ def UcodeOp : VTA_Op<"ucode"> {
 }
 
 
-def LoadNoOp : VTA_Load_Op<"load_noop"> {
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                         LOAD OP CUSTOM
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+def LoadUOPOp : VTA_Load_Op<"load_UOP"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride,
+        DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        DefaultValuedAttr<I8Attr, "0">:$XPad1
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 0; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def LoadWGTOp : VTA_Load_Op<"load_WGT"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride,
+        DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        DefaultValuedAttr<I8Attr, "0">:$XPad1
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 1; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def LoadINPOp : VTA_Load_Op<"load_INP"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride,
+        I8Attr:$YPad0,
+        I8Attr:$YPad1,
+        I8Attr:$XPad0,
+        I8Attr:$XPad1
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 2; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride `,`
+        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def LoadACCPop : VTA_Load_Op<"load_ACC"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride,
+        DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        DefaultValuedAttr<I8Attr, "0">:$XPad1
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
+        uint8_t getMemoryType() { return 3; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def LoadNoOp : VTA_Load_Op<"load_NoOp"> {
     let arguments = (ins 
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -361,51 +511,141 @@ def LoadNoOp : VTA_Load_Op<"load_noop"> {
     let results = (outs);
     
     // Same format as LoadOp
-    let assemblyFormat = [{
-        `mem` custom<MemoryType>($MemoryType) `,` 
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride `,`
-        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
-        attr-dict
-    }];
+    let assemblyFormat = "attr-dict";
     let hasVerifier = 1;
 }
 
-def StoreNoOp : VTA_Store_Op<"store_noop"> {
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                         STORE OP CUSTOM
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+def StoreUOPOp : VTA_Store_Op<"store_UOP"> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
-        
-        DefaultValuedAttr<I8Attr, "0">:$MemoryType,
-        DefaultValuedAttr<I16Attr, "0">:$SramBase,
-        DefaultValuedAttr<I32Attr, "0">:$DramBase,
-        DefaultValuedAttr<I16Attr, "0">:$YSize,
-        DefaultValuedAttr<I16Attr, "0">:$XSize,
-        DefaultValuedAttr<I16Attr, "0">:$XStride,
-        DefaultValuedAttr<I8Attr, "0">:$YPad0,
-        DefaultValuedAttr<I8Attr, "0">:$YPad1,
-        DefaultValuedAttr<I8Attr, "0">:$XPad0,
-        DefaultValuedAttr<I8Attr, "0">:$XPad1);
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride
+    );
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_STORE; }
+        uint8_t getMemoryType() { return 0; }
     }];
 
     let results = (outs);
-    
+
     let assemblyFormat = [{
-        `mem` custom<MemoryType>($MemoryType) `,`
         `sram` $SramBase `,`
         `dram` $DramBase `,`
         `size` $YSize `x` $XSize `,`
-        `stride` $XStride `,`
-        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
+        `stride` $XStride
         attr-dict
     }];
+
+    let hasVerifier = 1;
+}
+
+def StoreWGTOp : VTA_Store_Op<"store_WGT"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_STORE; }
+        uint8_t getMemoryType() { return 1; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def StoreINPOp : VTA_Store_Op<"store_INP"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_STORE; }
+        uint8_t getMemoryType() { return 2; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
+    let hasVerifier = 1;
+}
+
+def StoreACCPop : VTA_Store_Op<"store_ACC"> {
+    let arguments = (ins
+        DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
+        DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
+
+        I16Attr:$SramBase,
+        I32Attr:$DramBase,
+        I16Attr:$YSize,
+        I16Attr:$XSize,
+        I16Attr:$XStride
+    );
+
+    let extraClassDeclaration = [{
+        uint8_t getOpcode() { return VTA_OPCODE_STORE; }
+        uint8_t getMemoryType() { return 3; }
+    }];
+
+    let results = (outs);
+
+    let assemblyFormat = [{
+        `sram` $SramBase `,`
+        `dram` $DramBase `,`
+        `size` $YSize `x` $XSize `,`
+        `stride` $XStride
+        attr-dict
+    }];
+
     let hasVerifier = 1;
 }
 
@@ -424,7 +664,7 @@ def TransformUcodeToLoadOp : Pass<"vta-transform-ucode-to-loadop", "ModuleOp"> {
 
 def TransformGeneralStructure : Pass<"vta-transform-general-structure", "ModuleOp"> {}
 
-def TransformInsertDummyFinishLoad : Pass<"vta-insert-dummy-finish-load", "ModuleOp"> {}
+//def TransformInsertDummyFinishLoad : Pass<"vta-insert-dummy-finish-load", "ModuleOp"> {}
 
 
 

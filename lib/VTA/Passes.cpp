@@ -66,8 +66,8 @@ struct TransformGeneralStructurePass : public TransformGeneralStructureBase<Tran
 
 //========================================================================================================================//
 //Inserts a dummy ACC load before finish to wait for the store core.
-struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
-    void runOnOperation() override;};    
+//struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
+    //void runOnOperation() override;};    
    
 
 
@@ -113,7 +113,7 @@ void CheckUcodePass::runOnOperation() {
     //walk
     llvm::SmallVector<Operation*> opSnapshot; //Just a snapshot
     module.walk([&](Operation *op) {
-        if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
+        if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOp,
                 vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
             opSnapshot.push_back(op);
     });
@@ -278,7 +278,7 @@ void CheckUcodePass::runOnOperation() {
         //walk
         llvm::SmallVector<Operation*> opSnapshot;//// Snapshot of VTA ops in program order.
         module.walk([&](Operation *op) {
-            if (isa<vta::UcodeOp, vta::LoadOp, vta::StoreOp,
+            if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOp,
                     vta::GemmOp, vta::AluOp, vta::FinishOp>(op))
                 opSnapshot.push_back(op);
         });
@@ -479,6 +479,7 @@ void TransformGeneralStructurePass::runOnOperation() {
 
 //===============================================================================//
 //Inserts a dummy ACC load before finish to wait for the store core.
+/*
 void TransformInsertDummyFinishLoadPass::runOnOperation() {
     ModuleOp module = getOperation();
 
@@ -522,7 +523,7 @@ void TransformInsertDummyFinishLoadPass::runOnOperation() {
     });
 }
 
-
+*/
 
 
 } // close anonymous namespace
@@ -565,9 +566,9 @@ std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     return std::unique_ptr<Pass>(pass);}
 
 //===============================================================================//
-std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass() {
-    TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
-    return std::unique_ptr<Pass>(pass);}    
+//std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass() {
+   // TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
+   // return std::unique_ptr<Pass>(pass);}    
 
 
 

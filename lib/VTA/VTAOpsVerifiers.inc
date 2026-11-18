@@ -189,11 +189,27 @@ LogicalResult UcodeOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// LoadNoOp
+// Load CUSTOM OPS
 //===----------------------------------------------------------------------===//
 
 LogicalResult LoadNoOp::verify() {
 
+    return success();
+}
+
+LogicalResult LoadUOPOp::verify() {
+    return success();
+}
+
+LogicalResult LoadWGTOp::verify() {
+    return success();
+}
+
+LogicalResult LoadINPOp::verify() {
+    return success();
+}
+
+LogicalResult LoadACCPop::verify() {
     return success();
 }
 

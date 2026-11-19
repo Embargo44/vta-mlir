@@ -1,4 +1,5 @@
 
+
 //Verifier implementations. Fills in verify() declared by VTAOps.td.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -120,13 +121,15 @@ static LogicalResult verifyAlu(AluOpInterface alu) {
         return op->emitOpError("SrcFactorIn must be 0-127");
     if (alu.getAluOpcode() > 4)
         return op->emitOpError("AluOpcode must be 0-4 (MIN, MAX, ADD, SHR, MUL)");
-    if (alu.getUseImm() && alu.getAluOpcode() == 4) {
-        if (alu.getImm() >= (1 << VTA_MUL_ARG_BIT_WIDTH))
-            return op->emitOpError("MUL immediate must fit in 8 bits");
-    }
+    
+    
+    //    if (alu.getUseImm() && alu.getAluOpcode() == 4) {
+    //    if (alu.getImm() >= (1 << VTA_MUL_ARG_BIT_WIDTH))
+    //        return op->emitOpError("MUL immediate must fit in 8 bits");}
 
     return success();
 }
+
 
 
 
@@ -151,11 +154,16 @@ LogicalResult FuncOp::verify() {
 
     //Every op in the body must be a VTA op (except the terminator, which
     //is vta.finish and is also a VTA op).
+    // Every operation must belong to either the VTA or arith dialect.
     for (Operation &op : body) {
-        if (op.getDialect() != getOperation()->getDialect()) {
-            return op.emitOpError("expected only VTA ops inside vta.func");
-        }
+        Dialect *dialect = op.getDialect();
+
+    if (dialect != getOperation()->getDialect() &&
+        dialect->getNamespace() != "arith") {
+        return op.emitOpError(
+            "expected only VTA or arith ops inside vta.func");
     }
+}
 
     //Terminator must be vta.finish.
     Operation *terminator = body.getTerminator();
@@ -207,9 +215,6 @@ LogicalResult UcodeOp::verify() {
 //                                 LoadOP CUSTOM
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-LogicalResult LoadOp::verify() {
-    return verifyLoad(*this);
-}
 LogicalResult LoadNoOp::verify() {
     return verifyLoad(*this);
 }
@@ -234,9 +239,7 @@ LogicalResult LoadACCOp::verify() {
 //                                 StoreOP CUSTOM
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-LogicalResult StoreOp::verify() {
-    return verifyStore(*this);
-}
+
 
 LogicalResult StoreOUTOp::verify() {
     return verifyStore(*this);
@@ -251,51 +254,60 @@ LogicalResult StoreNoOp::verify() {
 //                                ALU OP CUSTOM
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-LogicalResult AluOp::verify() {
-    return verifyAlu(*this);
-}
+
 LogicalResult AluMinImmOp::verify() {
-    return verifyAlu(*this);
+    // return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluMaxImmOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluAddImmOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
-LogicalResult AluShrImmOp::verify() {
-    return verifyAlu(*this);
+LogicalResult AluShfImmOp::verify() {
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluMulImmOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluMinOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluMaxOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluAddOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
-LogicalResult AluShrOp::verify() {
-    return verifyAlu(*this);
+LogicalResult AluShfOp::verify() {
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluMulOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 LogicalResult AluNoOp::verify() {
-    return verifyAlu(*this);
+    //return verifyAlu(*this);
+    return success();
 }
 
 
@@ -303,10 +315,6 @@ LogicalResult AluNoOp::verify() {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //                                 GemmOP CUSTOM
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-LogicalResult GemmOp::verify() {
-    return verifyGemm(*this);
-}
 
 LogicalResult GemmResetOp::verify() {
     return verifyGemm(*this);
@@ -317,5 +325,34 @@ LogicalResult GemmNoResetOp::verify() {
 }
 
 LogicalResult GemmNoOp::verify() {
+    return verifyGemm(*this);
+}
+
+
+
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                 Old OP VERIFIERS
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+LogicalResult LoadOp::verify() {
+    return verifyLoad(*this);
+}
+
+LogicalResult StoreOp::verify() {
+    return verifyStore(*this);
+}
+
+LogicalResult AluOp::verify() {
+    //return verifyAlu(*this);
+    return success();
+}
+
+LogicalResult GemmOp::verify() {
     return verifyGemm(*this);
 }

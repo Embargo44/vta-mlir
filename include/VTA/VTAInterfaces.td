@@ -120,7 +120,8 @@ def VTA_AluOpInterface : OpInterface<"AluOpInterface"> {
     InterfaceMethod<"Get src_factor_in", "uint8_t", "getSrcFactorIn">,
     InterfaceMethod<"Get ALU opcode", "uint8_t", "getAluOpcode">,
     InterfaceMethod<"Get UseImm", "bool", "getUseImm">,
-    InterfaceMethod<"Get immediate", "int16_t", "getImm">
+    //InterfaceMethod<"Get immediate", "int16_t", "getImm">
+    InterfaceMethod<"Get immediate", "llvm::Optional<uint16_t>", "getImm">
   ];
 }
 

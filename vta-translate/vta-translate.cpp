@@ -22,7 +22,10 @@
 // Pass infrastructure
 #include "mlir/Pass/Pass.h"                              
 #include "VTA/Passes.h"                                  
-#include "mlir/Pass/PassManager.h"                      
+#include "mlir/Pass/PassManager.h"  
+
+//Arith dialect integration
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 
 using namespace mlir;
 
@@ -151,7 +154,21 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn.src_factor_in  = aluOp.getSrcFactorIn();
             insn.alu_opcode     = aluOp.getAluOpcode();
             insn.use_imm        = aluOp.getUseImm();
-            insn.imm            = aluOp.getImm();
+
+            //insn.imm            = aluOp.getImm();
+
+           if (innerOp->getNumOperands() > 0) {
+                Value immOperand = innerOp->getOperand(0);
+                auto constantOp = immOperand.getDefiningOp<arith::ConstantOp>();
+                auto value = constantOp.getValue().cast<IntegerAttr>();
+                insn.imm = value.getInt();
+        } else {
+            insn.imm = aluOp.getImm().value_or(0);
+                }
+
+
+
+
 
             char buf[16] = {};
             std::memcpy(buf, &insn, sizeof(VTAAluInsn));
@@ -226,7 +243,16 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
 //Registers the translation under the name "vta-binary", so the CLI
 //flag is --vta-binary. Claims VTADialect and func.
 static void registerVTATranslate() {
-    TranslateFromMLIRRegistration registration("vta-binary",translateVTAtoBit,[](DialectRegistry &registry) {registry.insert<vta::VTADialect,mlir::func::FuncDialect>();});
+    TranslateFromMLIRRegistration registration(
+        "vta-binary",
+        translateVTAtoBit,
+        [](DialectRegistry &registry) {
+            registry.insert<
+                vta::VTADialect,
+                mlir::arith::ArithmeticDialect,
+                mlir::func::FuncDialect
+            >();
+        });
 }
 
 

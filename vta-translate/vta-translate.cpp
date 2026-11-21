@@ -2,36 +2,43 @@
 #include "VTA/CustomHardwareDescription.h"
 
 // Standard MLIR infrastructure.
-#include "mlir/Dialect/Func/IR/FuncOps.h"               
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h" 
-#include "mlir/IR/BuiltinOps.h"                          
-#include "mlir/IR/DialectRegistry.h"                     
-#include "mlir/Support/LogicalResult.h"                  
-#include "mlir/Tools/mlir-translate/Translation.h"       
-#include "llvm/Support/raw_ostream.h"                    
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
+#include "llvm/Support/raw_ostream.h"
 
 // Standard C++
-#include <vector>                                        
+#include <vector>
 #include <cstring>
 
 // Generated from VTAOps.td
-#include "VTA/VTADialect.h"                              
-#include "VTA/VTAOps.h"                                  
-                             
+#include "VTA/VTADialect.h"
+#include "VTA/VTAOps.h"
 
 // Pass infrastructure
-#include "mlir/Pass/Pass.h"                              
-#include "VTA/Passes.h"                                  
-#include "mlir/Pass/PassManager.h"  
+#include "mlir/Pass/Pass.h"
+#include "VTA/Passes.h"
+#include "mlir/Pass/PassManager.h"
 
-//Arith dialect integration
+// Arith dialect integration
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 
 using namespace mlir;
 
+// Extract the integer value from an arith.constant SSA operand.
+static int64_t getArithConstantValue(Value operand) {
+    auto constantOp = operand.getDefiningOp<arith::ConstantOp>();
+    return constantOp.getValue().cast<IntegerAttr>().getInt();
+}
 
-
-
+template <typename T>
+static int64_t getFieldValue(Value operand, llvm::Optional<T> attributeValue) {
+    return operand ? getArithConstantValue(operand)
+                   : static_cast<int64_t>(attributeValue.value_or(0));
+}
 
 //Entry point called by mlir-translate with --vta-binary.
 static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output) {
@@ -39,52 +46,47 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
     if (!module)
         return failure();
 
-
-
-//====================================================================================================================
-    //Pass pipeline. Order matters 
+    //====================================================================================================================
+    //Pass pipeline. Order matters
     mlir::PassManager pm(module.getContext());
 
     //pm.addPass(vta::createTransformGeneralStructurePass());;
 
-    pm.addPass(vta::createTransformUcodeToLoadOpPass()); 
+    pm.addPass(vta::createTransformUcodeToLoadOpPass());
     pm.addPass(vta::createCheckStructurePass());
     //pm.addPass(vta::createCheckUcodePass());
-    //pm.addPass(vta::createTransformInsertDummyFinishLoadPass());   
-    
+    //pm.addPass(vta::createTransformInsertDummyFinishLoadPass());
+
     pm.addPass(vta::createCheckDependancyPass());
     if (mlir::failed(pm.run(module)))
         return failure();
 
-
     //output buffers. insn_bytes->instruction region,
     //ucode_bytes -> uop record region. Both get written into the binary after the 4-byte length header.
-    std::vector<uint8_t> insn_bytes;       
-    std::vector<uint8_t> ucode_bytes;  
+    std::vector<uint8_t> insn_bytes;
+    std::vector<uint8_t> ucode_bytes;
 
-    
-    
     //Walk every VTA op and pack it into its 16-byte (or 4-byte for uop)
     //binary form. The struct layouts come from CustomHardwareDescription.h
     //and must match the simulator's view of the same bytes.
     module.walk([&](Operation *innerOp) {
         if (auto loadOp = dyn_cast<vta::LoadOpInterface>(innerOp)) {
-            VTAMemInsn insn = {};    
+            VTAMemInsn insn = {};
             insn.opcode         = loadOp.getOpcode();
             insn.pop_prev_dep   = loadOp.getPopPrevDep();
             insn.pop_next_dep   = loadOp.getPopNextDep();
             insn.push_prev_dep  = loadOp.getPushPrevDep();
             insn.push_next_dep  = loadOp.getPushNextDep();
             insn.memory_type    = loadOp.getMemoryType();
-            insn.sram_base      = loadOp.getSramBase();
-            insn.dram_base      = loadOp.getDramBase();
-            insn.y_size         = loadOp.getYSize();
-            insn.x_size         = loadOp.getXSize();
-            insn.x_stride       = loadOp.getXStride();
-            insn.y_pad_0        = loadOp.getYPad0();
-            insn.y_pad_1        = loadOp.getYPad1();
-            insn.x_pad_0        = loadOp.getXPad0();
-            insn.x_pad_1        = loadOp.getXPad1();
+            insn.sram_base      = getFieldValue(loadOp.getSramBaseOperand(), loadOp.getSramBase());
+            insn.dram_base      = getFieldValue(loadOp.getDramBaseOperand(), loadOp.getDramBase());
+            insn.y_size         = getFieldValue(loadOp.getYSizeOperand(), loadOp.getYSize());
+            insn.x_size         = getFieldValue(loadOp.getXSizeOperand(), loadOp.getXSize());
+            insn.x_stride       = getFieldValue(loadOp.getXStrideOperand(), loadOp.getXStride());
+            insn.y_pad_0        = getFieldValue(loadOp.getYPad0Operand(), loadOp.getYPad0());
+            insn.y_pad_1        = getFieldValue(loadOp.getYPad1Operand(), loadOp.getYPad1());
+            insn.x_pad_0        = getFieldValue(loadOp.getXPad0Operand(), loadOp.getXPad0());
+            insn.x_pad_1        = getFieldValue(loadOp.getXPad1Operand(), loadOp.getXPad1());
 
             //memcpy into a byte buffer. The 16-byte size is fixed in hardware
             char buf[16] = {};
@@ -99,15 +101,15 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn.push_prev_dep  = storeOp.getPushPrevDep();
             insn.push_next_dep  = storeOp.getPushNextDep();
             insn.memory_type    = storeOp.getMemoryType();
-            insn.sram_base      = storeOp.getSramBase();
-            insn.dram_base      = storeOp.getDramBase();
-            insn.y_size         = storeOp.getYSize();
-            insn.x_size         = storeOp.getXSize();
-            insn.x_stride       = storeOp.getXStride();
-            insn.y_pad_0        = storeOp.getYPad0();
-            insn.y_pad_1        = storeOp.getYPad1();
-            insn.x_pad_0        = storeOp.getXPad0();
-            insn.x_pad_1        = storeOp.getXPad1();
+            insn.sram_base      = getFieldValue(storeOp.getSramBaseOperand(), storeOp.getSramBase());
+            insn.dram_base      = getFieldValue(storeOp.getDramBaseOperand(), storeOp.getDramBase());
+            insn.y_size         = getFieldValue(storeOp.getYSizeOperand(), storeOp.getYSize());
+            insn.x_size         = getFieldValue(storeOp.getXSizeOperand(), storeOp.getXSize());
+            insn.x_stride       = getFieldValue(storeOp.getXStrideOperand(), storeOp.getXStride());
+            insn.y_pad_0        = getFieldValue(storeOp.getYPad0Operand(), storeOp.getYPad0());
+            insn.y_pad_1        = getFieldValue(storeOp.getYPad1Operand(), storeOp.getYPad1());
+            insn.x_pad_0        = getFieldValue(storeOp.getXPad0Operand(), storeOp.getXPad0());
+            insn.x_pad_1        = getFieldValue(storeOp.getXPad1Operand(), storeOp.getXPad1());
 
             char buf[16] = {};
             std::memcpy(buf, &insn, sizeof(VTAMemInsn));
@@ -121,16 +123,16 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn.push_prev_dep  = gemmOp.getPushPrevDep();
             insn.push_next_dep  = gemmOp.getPushNextDep();
             insn.reset_reg      = gemmOp.getResetReg();
-            insn.uop_bgn        = gemmOp.getUopBgn();
-            insn.uop_end        = gemmOp.getUopEnd();
-            insn.iter_out       = gemmOp.getIterOut();
-            insn.iter_in        = gemmOp.getIterIn();
-            insn.dst_factor_out = gemmOp.getDstFactorOut();
-            insn.dst_factor_in  = gemmOp.getDstFactorIn();
-            insn.src_factor_out = gemmOp.getSrcFactorOut();
-            insn.src_factor_in  = gemmOp.getSrcFactorIn();
-            insn.wgt_factor_out = gemmOp.getWgtFactorOut();
-            insn.wgt_factor_in  = gemmOp.getWgtFactorIn();
+            insn.uop_bgn        = getFieldValue(gemmOp.getUopBgnOperand(), gemmOp.getUopBgn());
+            insn.uop_end        = getFieldValue(gemmOp.getUopEndOperand(), gemmOp.getUopEnd());
+            insn.iter_out       = getFieldValue(gemmOp.getIterOutOperand(), gemmOp.getIterOut());
+            insn.iter_in        = getFieldValue(gemmOp.getIterInOperand(), gemmOp.getIterIn());
+            insn.dst_factor_out = getFieldValue(gemmOp.getDstFactorOutOperand(), gemmOp.getDstFactorOut());
+            insn.dst_factor_in  = getFieldValue(gemmOp.getDstFactorInOperand(), gemmOp.getDstFactorIn());
+            insn.src_factor_out = getFieldValue(gemmOp.getSrcFactorOutOperand(), gemmOp.getSrcFactorOut());
+            insn.src_factor_in  = getFieldValue(gemmOp.getSrcFactorInOperand(), gemmOp.getSrcFactorIn());
+            insn.wgt_factor_out = getFieldValue(gemmOp.getWgtFactorOutOperand(), gemmOp.getWgtFactorOut());
+            insn.wgt_factor_in  = getFieldValue(gemmOp.getWgtFactorInOperand(), gemmOp.getWgtFactorIn());
 
             char buf[16] = {};
             std::memcpy(buf, &insn, sizeof(VTAGemInsn));
@@ -144,31 +146,17 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
             insn.push_prev_dep  = aluOp.getPushPrevDep();
             insn.push_next_dep  = aluOp.getPushNextDep();
             insn.reset_reg      = aluOp.getResetReg();
-            insn.uop_bgn        = aluOp.getUopBgn();
-            insn.uop_end        = aluOp.getUopEnd();
-            insn.iter_out       = aluOp.getIterOut();
-            insn.iter_in        = aluOp.getIterIn();
-            insn.dst_factor_out = aluOp.getDstFactorOut();
-            insn.dst_factor_in  = aluOp.getDstFactorIn();
-            insn.src_factor_out = aluOp.getSrcFactorOut();
-            insn.src_factor_in  = aluOp.getSrcFactorIn();
+            insn.uop_bgn        = getFieldValue(aluOp.getUopBgnOperand(), aluOp.getUopBgn());
+            insn.uop_end        = getFieldValue(aluOp.getUopEndOperand(), aluOp.getUopEnd());
+            insn.iter_out       = getFieldValue(aluOp.getIterOutOperand(), aluOp.getIterOut());
+            insn.iter_in        = getFieldValue(aluOp.getIterInOperand(), aluOp.getIterIn());
+            insn.dst_factor_out = getFieldValue(aluOp.getDstFactorOutOperand(), aluOp.getDstFactorOut());
+            insn.dst_factor_in  = getFieldValue(aluOp.getDstFactorInOperand(), aluOp.getDstFactorIn());
+            insn.src_factor_out = getFieldValue(aluOp.getSrcFactorOutOperand(), aluOp.getSrcFactorOut());
+            insn.src_factor_in  = getFieldValue(aluOp.getSrcFactorInOperand(), aluOp.getSrcFactorIn());
             insn.alu_opcode     = aluOp.getAluOpcode();
             insn.use_imm        = aluOp.getUseImm();
-
-            //insn.imm            = aluOp.getImm();
-
-           if (innerOp->getNumOperands() > 0) {
-                Value immOperand = innerOp->getOperand(0);
-                auto constantOp = immOperand.getDefiningOp<arith::ConstantOp>();
-                auto value = constantOp.getValue().cast<IntegerAttr>();
-                insn.imm = value.getInt();
-        } else {
-            insn.imm = aluOp.getImm().value_or(0);
-                }
-
-
-
-
+            insn.imm            = getFieldValue(aluOp.getImmOperand(), aluOp.getImm());
 
             char buf[16] = {};
             std::memcpy(buf, &insn, sizeof(VTAAluInsn));
@@ -184,7 +172,7 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
         }
         else if (auto ucodeOp = dyn_cast<vta::UcodeOp>(innerOp)) {
             //Ucode gets cast differently
-           for (Attribute a : ucodeOp.getRecords().getValue()) {
+            for (Attribute a : ucodeOp.getRecords().getValue()) {
                 auto triple = a.cast<ArrayAttr>();
                 VTAUop uop = {};
                 uop.dst_idx = triple[0].cast<IntegerAttr>().getInt();
@@ -195,7 +183,6 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
                 ucode_bytes.insert(ucode_bytes.end(), buf, buf + 4);
             }
         }
-
     });
 
     //===------------------------------------------------------------------===//
@@ -219,7 +206,6 @@ static LogicalResult translateVTAtoBit(Operation *op, llvm::raw_ostream &output)
         return failure();
     }
 
-    
     //insn_len fits in the 4-byte header field.
     if (insn_bytes.size() > UINT32_MAX) {
         module.emitError("instruction bytes exceed 32-bit header field");
@@ -255,7 +241,6 @@ static void registerVTATranslate() {
         });
 }
 
-
 //Standard mlir-translate entry. Passes argv straight through.
 int main(int argc, char **argv) {
     //mlir::registerAllTranslations();
@@ -263,19 +248,16 @@ int main(int argc, char **argv) {
     return failed(mlir::mlirTranslateMain(argc, argv, "VTA Translation Tool"));
 }
 
-
-
-
 // cd ~/vta-mlir/build
 //./bin/vta-translate ~/Desktop/test.mlir --vta-binary -o ~/Desktop/result.txt
 
 /*
-
 cd ~/vta-mlir
 rm -rf build
 mkdir build
 cd build
 cmake .. -DMLIR_DIR=/usr/lib/llvm-15/lib/cmake/mlir -DLLVM_EXTERNAL_LIT=$(which lit)
-make 
+make
+
 
 */

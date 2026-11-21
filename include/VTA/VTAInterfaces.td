@@ -17,7 +17,7 @@ def VTA_LoadOpInterface : OpInterface<"LoadOpInterface"> {
     Interface for VTA load operations.
   }];
   let cppNamespace = "::mlir::vta";
-  
+
   let methods = [
     InterfaceMethod<"Get the raw opcode", "uint8_t", "getOpcode", (ins), [{}], [{ return 0; }]>,
     InterfaceMethod<"Get pop_prev_dep flag", "bool", "getPopPrevDep">,
@@ -25,15 +25,24 @@ def VTA_LoadOpInterface : OpInterface<"LoadOpInterface"> {
     InterfaceMethod<"Get push_prev_dep flag", "bool", "getPushPrevDep">,
     InterfaceMethod<"Get push_next_dep flag", "bool", "getPushNextDep">,
     InterfaceMethod<"Get memory type", "uint8_t", "getMemoryType">,
-    InterfaceMethod<"Get SRAM base", "uint16_t", "getSramBase">,
-    InterfaceMethod<"Get DRAM base", "uint32_t", "getDramBase">,
-    InterfaceMethod<"Get Y size", "uint16_t", "getYSize">,
-    InterfaceMethod<"Get X size", "uint16_t", "getXSize">,
-    InterfaceMethod<"Get X stride", "uint16_t", "getXStride">,
-    InterfaceMethod<"Get Y pad 0", "uint8_t", "getYPad0">,
-    InterfaceMethod<"Get Y pad 1", "uint8_t", "getYPad1">,
-    InterfaceMethod<"Get X pad 0", "uint8_t", "getXPad0">,
-    InterfaceMethod<"Get X pad 1", "uint8_t", "getXPad1">
+    InterfaceMethod<"Get SRAM base", "llvm::Optional<uint16_t>", "getSramBase", (ins), [{}], [{ return $_op.getSramBase(); }]>,
+    InterfaceMethod<"Get DRAM base", "llvm::Optional<uint32_t>", "getDramBase", (ins), [{}], [{ return $_op.getDramBase(); }]>,
+    InterfaceMethod<"Get Y size", "llvm::Optional<uint16_t>", "getYSize", (ins), [{}], [{ return $_op.getYSize(); }]>,
+    InterfaceMethod<"Get X size", "llvm::Optional<uint16_t>", "getXSize", (ins), [{}], [{ return $_op.getXSize(); }]>,
+    InterfaceMethod<"Get X stride", "llvm::Optional<uint16_t>", "getXStride", (ins), [{}], [{ return $_op.getXStride(); }]>,
+    InterfaceMethod<"Get Y pad 0", "llvm::Optional<uint8_t>", "getYPad0", (ins), [{}], [{ return $_op.getYPad0(); }]>,
+    InterfaceMethod<"Get Y pad 1", "llvm::Optional<uint8_t>", "getYPad1", (ins), [{}], [{ return $_op.getYPad1(); }]>,
+    InterfaceMethod<"Get X pad 0", "llvm::Optional<uint8_t>", "getXPad0", (ins), [{}], [{ return $_op.getXPad0(); }]>,
+    InterfaceMethod<"Get X pad 1", "llvm::Optional<uint8_t>", "getXPad1", (ins), [{}], [{ return $_op.getXPad1(); }]>,
+    InterfaceMethod<"Get SramBase SSA operand", "::mlir::Value", "getSramBaseOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DramBase SSA operand", "::mlir::Value", "getDramBaseOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YSize SSA operand", "::mlir::Value", "getYSizeOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XSize SSA operand", "::mlir::Value", "getXSizeOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XStride SSA operand", "::mlir::Value", "getXStrideOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YPad0 SSA operand", "::mlir::Value", "getYPad0Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YPad1 SSA operand", "::mlir::Value", "getYPad1Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XPad0 SSA operand", "::mlir::Value", "getXPad0Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XPad1 SSA operand", "::mlir::Value", "getXPad1Operand", (ins), [{}], [{ return {}; }]>
   ];
 }
 
@@ -45,7 +54,7 @@ def VTA_StoreOpInterface : OpInterface<"StoreOpInterface"> {
     Interface for VTA store operations.
   }];
   let cppNamespace = "::mlir::vta";
-  
+
   let methods = [
     InterfaceMethod<"Get the raw opcode", "uint8_t", "getOpcode", (ins), [{}], [{ return 0; }]>,
     InterfaceMethod<"Get pop_prev_dep flag", "bool", "getPopPrevDep">,
@@ -53,15 +62,24 @@ def VTA_StoreOpInterface : OpInterface<"StoreOpInterface"> {
     InterfaceMethod<"Get push_prev_dep flag", "bool", "getPushPrevDep">,
     InterfaceMethod<"Get push_next_dep flag", "bool", "getPushNextDep">,
     InterfaceMethod<"Get memory type", "uint8_t", "getMemoryType">,
-    InterfaceMethod<"Get SRAM base", "uint16_t", "getSramBase">,
-    InterfaceMethod<"Get DRAM base", "uint32_t", "getDramBase">,
-    InterfaceMethod<"Get Y size", "uint16_t", "getYSize">,
-    InterfaceMethod<"Get X size", "uint16_t", "getXSize">,
-    InterfaceMethod<"Get X stride", "uint16_t", "getXStride">,
-    InterfaceMethod<"Get Y pad 0", "uint8_t", "getYPad0">,
-    InterfaceMethod<"Get Y pad 1", "uint8_t", "getYPad1">,
-    InterfaceMethod<"Get X pad 0", "uint8_t", "getXPad0">,
-    InterfaceMethod<"Get X pad 1", "uint8_t", "getXPad1">
+    InterfaceMethod<"Get SRAM base", "llvm::Optional<uint16_t>", "getSramBase", (ins), [{}], [{ return $_op.getSramBase(); }]>,
+    InterfaceMethod<"Get DRAM base", "llvm::Optional<uint32_t>", "getDramBase", (ins), [{}], [{ return $_op.getDramBase(); }]>,
+    InterfaceMethod<"Get Y size", "llvm::Optional<uint16_t>", "getYSize", (ins), [{}], [{ return $_op.getYSize(); }]>,
+    InterfaceMethod<"Get X size", "llvm::Optional<uint16_t>", "getXSize", (ins), [{}], [{ return $_op.getXSize(); }]>,
+    InterfaceMethod<"Get X stride", "llvm::Optional<uint16_t>", "getXStride", (ins), [{}], [{ return $_op.getXStride(); }]>,
+    InterfaceMethod<"Get Y pad 0", "llvm::Optional<uint8_t>", "getYPad0", (ins), [{}], [{ return $_op.getYPad0(); }]>,
+    InterfaceMethod<"Get Y pad 1", "llvm::Optional<uint8_t>", "getYPad1", (ins), [{}], [{ return $_op.getYPad1(); }]>,
+    InterfaceMethod<"Get X pad 0", "llvm::Optional<uint8_t>", "getXPad0", (ins), [{}], [{ return $_op.getXPad0(); }]>,
+    InterfaceMethod<"Get X pad 1", "llvm::Optional<uint8_t>", "getXPad1", (ins), [{}], [{ return $_op.getXPad1(); }]>,
+    InterfaceMethod<"Get SramBase SSA operand", "::mlir::Value", "getSramBaseOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DramBase SSA operand", "::mlir::Value", "getDramBaseOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YSize SSA operand", "::mlir::Value", "getYSizeOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XSize SSA operand", "::mlir::Value", "getXSizeOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XStride SSA operand", "::mlir::Value", "getXStrideOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YPad0 SSA operand", "::mlir::Value", "getYPad0Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get YPad1 SSA operand", "::mlir::Value", "getYPad1Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XPad0 SSA operand", "::mlir::Value", "getXPad0Operand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get XPad1 SSA operand", "::mlir::Value", "getXPad1Operand", (ins), [{}], [{ return {}; }]>
   ];
 }
 
@@ -73,7 +91,7 @@ def VTA_GemmOpInterface : OpInterface<"GemmOpInterface"> {
     Interface for VTA GEMM operations.
   }];
   let cppNamespace = "::mlir::vta";
-  
+
   let methods = [
     InterfaceMethod<"Get the raw opcode", "uint8_t", "getOpcode", (ins), [{}], [{ return 0; }]>,
     InterfaceMethod<"Get pop_prev_dep flag", "bool", "getPopPrevDep">,
@@ -81,16 +99,26 @@ def VTA_GemmOpInterface : OpInterface<"GemmOpInterface"> {
     InterfaceMethod<"Get push_prev_dep flag", "bool", "getPushPrevDep">,
     InterfaceMethod<"Get push_next_dep flag", "bool", "getPushNextDep">,
     InterfaceMethod<"Get reset_reg flag", "bool", "getResetReg">,
-    InterfaceMethod<"Get UOP begin", "uint8_t", "getUopBgn">,
-    InterfaceMethod<"Get UOP end", "uint8_t", "getUopEnd">,
-    InterfaceMethod<"Get iter_out", "uint16_t", "getIterOut">,
-    InterfaceMethod<"Get iter_in", "uint16_t", "getIterIn">,
-    InterfaceMethod<"Get dst_factor_out", "uint8_t", "getDstFactorOut">,
-    InterfaceMethod<"Get dst_factor_in", "uint8_t", "getDstFactorIn">,
-    InterfaceMethod<"Get src_factor_out", "uint8_t", "getSrcFactorOut">,
-    InterfaceMethod<"Get src_factor_in", "uint8_t", "getSrcFactorIn">,
-    InterfaceMethod<"Get wgt_factor_out", "uint8_t", "getWgtFactorOut">,
-    InterfaceMethod<"Get wgt_factor_in", "uint8_t", "getWgtFactorIn">
+    InterfaceMethod<"Get UOP begin", "llvm::Optional<uint8_t>", "getUopBgn", (ins), [{}], [{ return $_op.getUopBgn(); }]>,
+    InterfaceMethod<"Get UOP end", "llvm::Optional<uint8_t>", "getUopEnd", (ins), [{}], [{ return $_op.getUopEnd(); }]>,
+    InterfaceMethod<"Get iter_out", "llvm::Optional<uint16_t>", "getIterOut", (ins), [{}], [{ return $_op.getIterOut(); }]>,
+    InterfaceMethod<"Get iter_in", "llvm::Optional<uint16_t>", "getIterIn", (ins), [{}], [{ return $_op.getIterIn(); }]>,
+    InterfaceMethod<"Get dst_factor_out", "llvm::Optional<uint8_t>", "getDstFactorOut", (ins), [{}], [{ return $_op.getDstFactorOut(); }]>,
+    InterfaceMethod<"Get dst_factor_in", "llvm::Optional<uint8_t>", "getDstFactorIn", (ins), [{}], [{ return $_op.getDstFactorIn(); }]>,
+    InterfaceMethod<"Get src_factor_out", "llvm::Optional<uint8_t>", "getSrcFactorOut", (ins), [{}], [{ return $_op.getSrcFactorOut(); }]>,
+    InterfaceMethod<"Get src_factor_in", "llvm::Optional<uint8_t>", "getSrcFactorIn", (ins), [{}], [{ return $_op.getSrcFactorIn(); }]>,
+    InterfaceMethod<"Get wgt_factor_out", "llvm::Optional<uint8_t>", "getWgtFactorOut", (ins), [{}], [{ return $_op.getWgtFactorOut(); }]>,
+    InterfaceMethod<"Get wgt_factor_in", "llvm::Optional<uint8_t>", "getWgtFactorIn", (ins), [{}], [{ return $_op.getWgtFactorIn(); }]>,
+    InterfaceMethod<"Get UopBgn SSA operand", "::mlir::Value", "getUopBgnOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get UopEnd SSA operand", "::mlir::Value", "getUopEndOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get IterOut SSA operand", "::mlir::Value", "getIterOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get IterIn SSA operand", "::mlir::Value", "getIterInOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DstFactorOut SSA operand", "::mlir::Value", "getDstFactorOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DstFactorIn SSA operand", "::mlir::Value", "getDstFactorInOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get SrcFactorOut SSA operand", "::mlir::Value", "getSrcFactorOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get SrcFactorIn SSA operand", "::mlir::Value", "getSrcFactorInOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get WgtFactorOut SSA operand", "::mlir::Value", "getWgtFactorOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get WgtFactorIn SSA operand", "::mlir::Value", "getWgtFactorInOperand", (ins), [{}], [{ return {}; }]>
   ];
 }
 
@@ -102,7 +130,7 @@ def VTA_AluOpInterface : OpInterface<"AluOpInterface"> {
     Interface for VTA ALU operations.
   }];
   let cppNamespace = "::mlir::vta";
-  
+
   let methods = [
     InterfaceMethod<"Get the raw opcode", "uint8_t", "getOpcode", (ins), [{}], [{ return 0; }]>,
     InterfaceMethod<"Get pop_prev_dep flag", "bool", "getPopPrevDep">,
@@ -110,18 +138,26 @@ def VTA_AluOpInterface : OpInterface<"AluOpInterface"> {
     InterfaceMethod<"Get push_prev_dep flag", "bool", "getPushPrevDep">,
     InterfaceMethod<"Get push_next_dep flag", "bool", "getPushNextDep">,
     InterfaceMethod<"Get reset_reg flag", "bool", "getResetReg">,
-    InterfaceMethod<"Get UOP begin", "uint8_t", "getUopBgn">,
-    InterfaceMethod<"Get UOP end", "uint8_t", "getUopEnd">,
-    InterfaceMethod<"Get iter_out", "uint16_t", "getIterOut">,
-    InterfaceMethod<"Get iter_in", "uint16_t", "getIterIn">,
-    InterfaceMethod<"Get dst_factor_out", "uint8_t", "getDstFactorOut">,
-    InterfaceMethod<"Get dst_factor_in", "uint8_t", "getDstFactorIn">,
-    InterfaceMethod<"Get src_factor_out", "uint8_t", "getSrcFactorOut">,
-    InterfaceMethod<"Get src_factor_in", "uint8_t", "getSrcFactorIn">,
+    InterfaceMethod<"Get UOP begin", "llvm::Optional<uint8_t>", "getUopBgn", (ins), [{}], [{ return $_op.getUopBgn(); }]>,
+    InterfaceMethod<"Get UOP end", "llvm::Optional<uint8_t>", "getUopEnd", (ins), [{}], [{ return $_op.getUopEnd(); }]>,
+    InterfaceMethod<"Get iter_out", "llvm::Optional<uint16_t>", "getIterOut", (ins), [{}], [{ return $_op.getIterOut(); }]>,
+    InterfaceMethod<"Get iter_in", "llvm::Optional<uint16_t>", "getIterIn", (ins), [{}], [{ return $_op.getIterIn(); }]>,
+    InterfaceMethod<"Get dst_factor_out", "llvm::Optional<uint8_t>", "getDstFactorOut", (ins), [{}], [{ return $_op.getDstFactorOut(); }]>,
+    InterfaceMethod<"Get dst_factor_in", "llvm::Optional<uint8_t>", "getDstFactorIn", (ins), [{}], [{ return $_op.getDstFactorIn(); }]>,
+    InterfaceMethod<"Get src_factor_out", "llvm::Optional<uint8_t>", "getSrcFactorOut", (ins), [{}], [{ return $_op.getSrcFactorOut(); }]>,
+    InterfaceMethod<"Get src_factor_in", "llvm::Optional<uint8_t>", "getSrcFactorIn", (ins), [{}], [{ return $_op.getSrcFactorIn(); }]>,
+    InterfaceMethod<"Get UopBgn SSA operand", "::mlir::Value", "getUopBgnOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get UopEnd SSA operand", "::mlir::Value", "getUopEndOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get IterOut SSA operand", "::mlir::Value", "getIterOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get IterIn SSA operand", "::mlir::Value", "getIterInOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DstFactorOut SSA operand", "::mlir::Value", "getDstFactorOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get DstFactorIn SSA operand", "::mlir::Value", "getDstFactorInOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get SrcFactorOut SSA operand", "::mlir::Value", "getSrcFactorOutOperand", (ins), [{}], [{ return {}; }]>,
+    InterfaceMethod<"Get SrcFactorIn SSA operand", "::mlir::Value", "getSrcFactorInOperand", (ins), [{}], [{ return {}; }]>,
     InterfaceMethod<"Get ALU opcode", "uint8_t", "getAluOpcode">,
     InterfaceMethod<"Get UseImm", "bool", "getUseImm">,
-    //InterfaceMethod<"Get immediate", "int16_t", "getImm">
-    InterfaceMethod<"Get immediate", "llvm::Optional<uint16_t>", "getImm">
+    InterfaceMethod<"Get immediate", "llvm::Optional<uint16_t>", "getImm">,
+    InterfaceMethod<"Get Imm SSA operand", "::mlir::Value", "getImmOperand", (ins), [{}], [{ return {}; }]>
   ];
 }
 

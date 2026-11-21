@@ -1,28 +1,42 @@
-
-
 //Verifier implementations. Fills in verify() declared by VTAOps.td.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //                                 SHARED VERIFICATION Methods
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Resolve an SSA constant operand; otherwise use the literal attribute value.
+static int64_t getArithConstantValue(Value operand) {
+    Operation *constantOp = operand.getDefiningOp();
+    return constantOp->getAttrOfType<IntegerAttr>("value").getInt();
+}
+
+template <typename T>
+static int64_t getFieldValue(Value operand, llvm::Optional<T> attributeValue) {
+    return operand ? getArithConstantValue(operand)
+                   : static_cast<int64_t>(attributeValue.value_or(0));
+}
+
 static LogicalResult verifyLoad(LoadOpInterface load) {
     Operation *op = load.getOperation();
 
     if (load.getMemoryType() > 3)
         return op->emitOpError("MemoryType must be 0-3 (UOP, WGT, INP, ACC)");
-    if (load.getYPad0() > 15)
+    if (getFieldValue(load.getYPad0Operand(), load.getYPad0()) > 15)
         return op->emitOpError("YPad0 must be 0-15");
-    if (load.getYPad1() > 15)
+    if (getFieldValue(load.getYPad1Operand(), load.getYPad1()) > 15)
         return op->emitOpError("YPad1 must be 0-15");
-    if (load.getXPad0() > 15)
+    if (getFieldValue(load.getXPad0Operand(), load.getXPad0()) > 15)
         return op->emitOpError("XPad0 must be 0-15");
-    if (load.getXPad1() > 15)
+    if (getFieldValue(load.getXPad1Operand(), load.getXPad1()) > 15)
         return op->emitOpError("XPad1 must be 0-15");
 
     // Buffer bounds: SramBase + total elements must fit the SRAM depth.
-    int64_t extent = (int64_t)(load.getYSize() + load.getYPad0() + load.getYPad1())
-                   * (int64_t)(load.getXSize() + load.getXPad0() + load.getXPad1());
+    int64_t extent = (getFieldValue(load.getYSizeOperand(), load.getYSize())
+                      + getFieldValue(load.getYPad0Operand(), load.getYPad0())
+                      + getFieldValue(load.getYPad1Operand(), load.getYPad1()))
+                   * (getFieldValue(load.getXSizeOperand(), load.getXSize())
+                      + getFieldValue(load.getXPad0Operand(), load.getXPad0())
+                      + getFieldValue(load.getXPad1Operand(), load.getXPad1()));
     int64_t depth;
     switch (load.getMemoryType()) {
         case 0: depth = 1 << VTA_LOG_UOP_BUFF_DEPTH; break;
@@ -31,7 +45,7 @@ static LogicalResult verifyLoad(LoadOpInterface load) {
         case 3: depth = 1 << VTA_LOG_ACC_BUFF_DEPTH; break;
         default: return success();
     }
-    if ((int64_t)load.getSramBase() + extent > depth)
+    if (getFieldValue(load.getSramBaseOperand(), load.getSramBase()) + extent > depth)
         return op->emitOpError("load exceeds SRAM buffer bounds");
 
     return success();
@@ -42,20 +56,24 @@ static LogicalResult verifyStore(StoreOpInterface store) {
 
     if (store.getMemoryType() != 4)
         return op->emitOpError("MemoryType must be 4 (OUT)");
-    if (store.getYPad0() > 15)
+    if (getFieldValue(store.getYPad0Operand(), store.getYPad0()) > 15)
         return op->emitOpError("YPad0 must be 0-15");
-    if (store.getYPad1() > 15)
+    if (getFieldValue(store.getYPad1Operand(), store.getYPad1()) > 15)
         return op->emitOpError("YPad1 must be 0-15");
-    if (store.getXPad0() > 15)
+    if (getFieldValue(store.getXPad0Operand(), store.getXPad0()) > 15)
         return op->emitOpError("XPad0 must be 0-15");
-    if (store.getXPad1() > 15)
+    if (getFieldValue(store.getXPad1Operand(), store.getXPad1()) > 15)
         return op->emitOpError("XPad1 must be 0-15");
 
     // Buffer bounds on the OUT buffer.
-    int64_t extent = (int64_t)(store.getYSize() + store.getYPad0() + store.getYPad1())
-                   * (int64_t)(store.getXSize() + store.getXPad0() + store.getXPad1());
+    int64_t extent = (getFieldValue(store.getYSizeOperand(), store.getYSize())
+                      + getFieldValue(store.getYPad0Operand(), store.getYPad0())
+                      + getFieldValue(store.getYPad1Operand(), store.getYPad1()))
+                   * (getFieldValue(store.getXSizeOperand(), store.getXSize())
+                      + getFieldValue(store.getXPad0Operand(), store.getXPad0())
+                      + getFieldValue(store.getXPad1Operand(), store.getXPad1()));
     int64_t depth = 1 << VTA_LOG_OUT_BUFF_DEPTH;
-    if ((int64_t)store.getSramBase() + extent > depth)
+    if (getFieldValue(store.getSramBaseOperand(), store.getSramBase()) + extent > depth)
         return op->emitOpError("store exceeds SRAM buffer bounds");
 
     return success();
@@ -64,31 +82,34 @@ static LogicalResult verifyStore(StoreOpInterface store) {
 static LogicalResult verifyGemm(GemmOpInterface gemm) {
     Operation *op = gemm.getOperation();
 
-    if (gemm.getUopBgn() > 127)
+    if (getFieldValue(gemm.getUopBgnOperand(), gemm.getUopBgn()) > 127)
         return op->emitOpError("UopBgn must be 0-127");
-    if (gemm.getUopBgn() > gemm.getUopEnd())
+    if (getFieldValue(gemm.getUopBgnOperand(), gemm.getUopBgn()) >
+        getFieldValue(gemm.getUopEndOperand(), gemm.getUopEnd()))
         return op->emitOpError("UopBgn must be <= UopEnd");
-    if (!gemm.getResetReg() && gemm.getUopEnd() <= gemm.getUopBgn())
+    if (!gemm.getResetReg() &&
+        getFieldValue(gemm.getUopEndOperand(), gemm.getUopEnd()) <=
+        getFieldValue(gemm.getUopBgnOperand(), gemm.getUopBgn()))
         return op->emitOpError("UopEnd must be > UopBgn when ResetReg is false");
-    if (gemm.getIterOut() < 1)
+    if (getFieldValue(gemm.getIterOutOperand(), gemm.getIterOut()) < 1)
         return op->emitOpError("IterOut must be >= 1");
-    if (gemm.getIterIn() < 1)
+    if (getFieldValue(gemm.getIterInOperand(), gemm.getIterIn()) < 1)
         return op->emitOpError("IterIn must be >= 1");
-    if (gemm.getIterOut() > 16383)
+    if (getFieldValue(gemm.getIterOutOperand(), gemm.getIterOut()) > 16383)
         return op->emitOpError("IterOut must be <= 16383");
-    if (gemm.getIterIn() > 16383)
+    if (getFieldValue(gemm.getIterInOperand(), gemm.getIterIn()) > 16383)
         return op->emitOpError("IterIn must be <= 16383");
-    if (gemm.getDstFactorOut() > 127)
+    if (getFieldValue(gemm.getDstFactorOutOperand(), gemm.getDstFactorOut()) > 127)
         return op->emitOpError("DstFactorOut must be 0-127");
-    if (gemm.getDstFactorIn() > 127)
+    if (getFieldValue(gemm.getDstFactorInOperand(), gemm.getDstFactorIn()) > 127)
         return op->emitOpError("DstFactorIn must be 0-127");
-    if (gemm.getSrcFactorOut() > 127)
+    if (getFieldValue(gemm.getSrcFactorOutOperand(), gemm.getSrcFactorOut()) > 127)
         return op->emitOpError("SrcFactorOut must be 0-127");
-    if (gemm.getSrcFactorIn() > 127)
+    if (getFieldValue(gemm.getSrcFactorInOperand(), gemm.getSrcFactorIn()) > 127)
         return op->emitOpError("SrcFactorIn must be 0-127");
-    if (gemm.getWgtFactorOut() > 127)
+    if (getFieldValue(gemm.getWgtFactorOutOperand(), gemm.getWgtFactorOut()) > 127)
         return op->emitOpError("WgtFactorOut must be 0-127");
-    if (gemm.getWgtFactorIn() > 127)
+    if (getFieldValue(gemm.getWgtFactorInOperand(), gemm.getWgtFactorIn()) > 127)
         return op->emitOpError("WgtFactorIn must be 0-127");
 
     return success();
@@ -97,32 +118,34 @@ static LogicalResult verifyGemm(GemmOpInterface gemm) {
 static LogicalResult verifyAlu(AluOpInterface alu) {
     Operation *op = alu.getOperation();
 
-    if (alu.getUopBgn() > 127)
+    if (getFieldValue(alu.getUopBgnOperand(), alu.getUopBgn()) > 127)
         return op->emitOpError("UopBgn must be 0-127");
-    if (alu.getUopBgn() > alu.getUopEnd())
+    if (getFieldValue(alu.getUopBgnOperand(), alu.getUopBgn()) >
+        getFieldValue(alu.getUopEndOperand(), alu.getUopEnd()))
         return op->emitOpError("UopBgn must be <= UopEnd");
-    if (!alu.getResetReg() && alu.getUopEnd() <= alu.getUopBgn())
+    if (!alu.getResetReg() &&
+        getFieldValue(alu.getUopEndOperand(), alu.getUopEnd()) <=
+        getFieldValue(alu.getUopBgnOperand(), alu.getUopBgn()))
         return op->emitOpError("UopEnd must be > UopBgn when ResetReg is false");
-    if (alu.getIterOut() < 1)
+    if (getFieldValue(alu.getIterOutOperand(), alu.getIterOut()) < 1)
         return op->emitOpError("IterOut must be >= 1");
-    if (alu.getIterIn() < 1)
+    if (getFieldValue(alu.getIterInOperand(), alu.getIterIn()) < 1)
         return op->emitOpError("IterIn must be >= 1");
-    if (alu.getIterOut() > 16383)
+    if (getFieldValue(alu.getIterOutOperand(), alu.getIterOut()) > 16383)
         return op->emitOpError("IterOut must be <= 16383");
-    if (alu.getIterIn() > 16383)
+    if (getFieldValue(alu.getIterInOperand(), alu.getIterIn()) > 16383)
         return op->emitOpError("IterIn must be <= 16383");
-    if (alu.getDstFactorOut() > 127)
+    if (getFieldValue(alu.getDstFactorOutOperand(), alu.getDstFactorOut()) > 127)
         return op->emitOpError("DstFactorOut must be 0-127");
-    if (alu.getDstFactorIn() > 127)
+    if (getFieldValue(alu.getDstFactorInOperand(), alu.getDstFactorIn()) > 127)
         return op->emitOpError("DstFactorIn must be 0-127");
-    if (alu.getSrcFactorOut() > 127)
+    if (getFieldValue(alu.getSrcFactorOutOperand(), alu.getSrcFactorOut()) > 127)
         return op->emitOpError("SrcFactorOut must be 0-127");
-    if (alu.getSrcFactorIn() > 127)
+    if (getFieldValue(alu.getSrcFactorInOperand(), alu.getSrcFactorIn()) > 127)
         return op->emitOpError("SrcFactorIn must be 0-127");
     if (alu.getAluOpcode() > 4)
         return op->emitOpError("AluOpcode must be 0-4 (MIN, MAX, ADD, SHR, MUL)");
-    
-    
+
     //    if (alu.getUseImm() && alu.getAluOpcode() == 4) {
     //    if (alu.getImm() >= (1 << VTA_MUL_ARG_BIT_WIDTH))
     //        return op->emitOpError("MUL immediate must fit in 8 bits");}
@@ -143,7 +166,6 @@ static LogicalResult verifyAlu(AluOpInterface alu) {
 //                                   Other Verification Methods
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-
 // FuncOp
 LogicalResult FuncOp::verify() {
     //Body must not be empty. At minimum a vta.finish terminator.
@@ -158,12 +180,12 @@ LogicalResult FuncOp::verify() {
     for (Operation &op : body) {
         Dialect *dialect = op.getDialect();
 
-    if (dialect != getOperation()->getDialect() &&
-        dialect->getNamespace() != "arith") {
-        return op.emitOpError(
-            "expected only VTA or arith ops inside vta.func");
+        if (dialect != getOperation()->getDialect() &&
+            dialect->getNamespace() != "arith") {
+            return op.emitOpError(
+                "expected only VTA or arith ops inside vta.func");
+        }
     }
-}
 
     //Terminator must be vta.finish.
     Operation *terminator = body.getTerminator();
@@ -174,9 +196,7 @@ LogicalResult FuncOp::verify() {
     return success();
 }
 
-
 // UcodeOp
-
 LogicalResult UcodeOp::verify() {
     if (getRecords().empty())
         return emitOpError("Records must not be empty");
@@ -203,8 +223,6 @@ LogicalResult UcodeOp::verify() {
     }
     return success();
 }
-
-
 
 
 
@@ -336,6 +354,7 @@ LogicalResult GemmNoOp::verify() {
 
 
 
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //                                 Old OP VERIFIERS
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -356,3 +375,7 @@ LogicalResult AluOp::verify() {
 LogicalResult GemmOp::verify() {
     return verifyGemm(*this);
 }
+
+
+
+

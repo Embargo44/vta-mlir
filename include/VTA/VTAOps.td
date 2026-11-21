@@ -106,31 +106,44 @@ def UcodeOp : VTA_Op<"ucode"> {
 // LOAD OPERATIONS
 //======================================================================================================================
 
-class VTA_LoadBase<string mnemonic> : VTA_Load_Op<mnemonic> {
+class VTA_LoadBase<string mnemonic> : VTA_Load_Op<mnemonic, [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride,
+        Optional<I16>:$SramBaseOperand,
+        OptionalAttr<I16Attr>:$SramBase,
+        Optional<I32>:$DramBaseOperand,
+        OptionalAttr<I32Attr>:$DramBase,
+        Optional<I16>:$YSizeOperand,
+        OptionalAttr<I16Attr>:$YSize,
+        Optional<I16>:$XSizeOperand,
+        OptionalAttr<I16Attr>:$XSize,
+        Optional<I16>:$XStrideOperand,
+        OptionalAttr<I16Attr>:$XStride,
+        Optional<I8>:$YPad0Operand,
         DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        Optional<I8>:$YPad1Operand,
         DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        Optional<I8>:$XPad0Operand,
         DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        Optional<I8>:$XPad1Operand,
         DefaultValuedAttr<I8Attr, "0">:$XPad1
     );
 
     let results = (outs);
 
     let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride
+        `sram` ($SramBase^):($SramBaseOperand)? `,`
+        `dram` ($DramBase^):($DramBaseOperand)? `,`
+        `size` ($YSize^):($YSizeOperand)? `x` ($XSize^):($XSizeOperand)? `,`
+        `stride` ($XStride^):($XStrideOperand)?
+        (`y_pad0` $YPad0Operand^)?
+        (`y_pad1` $YPad1Operand^)?
+        (`x_pad0` $XPad0Operand^)?
+        (`x_pad1` $XPad1Operand^)?
         attr-dict
     }];
 
@@ -138,22 +151,31 @@ class VTA_LoadBase<string mnemonic> : VTA_Load_Op<mnemonic> {
 }
 
 // LOAD INP
-def LoadINPOp : VTA_Load_Op<"load_INP"> {
+def LoadINPOp : VTA_Load_Op<"load_INP", [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
-        I16Attr:$SramBase,
-        I32Attr:$DramBase,
-        I16Attr:$YSize,
-        I16Attr:$XSize,
-        I16Attr:$XStride,
-        I8Attr:$YPad0,
-        I8Attr:$YPad1,
-        I8Attr:$XPad0,
-        I8Attr:$XPad1
+        Optional<I16>:$SramBaseOperand,
+        OptionalAttr<I16Attr>:$SramBase,
+        Optional<I32>:$DramBaseOperand,
+        OptionalAttr<I32Attr>:$DramBase,
+        Optional<I16>:$YSizeOperand,
+        OptionalAttr<I16Attr>:$YSize,
+        Optional<I16>:$XSizeOperand,
+        OptionalAttr<I16Attr>:$XSize,
+        Optional<I16>:$XStrideOperand,
+        OptionalAttr<I16Attr>:$XStride,
+        Optional<I8>:$YPad0Operand,
+        OptionalAttr<I8Attr>:$YPad0,
+        Optional<I8>:$YPad1Operand,
+        OptionalAttr<I8Attr>:$YPad1,
+        Optional<I8>:$XPad0Operand,
+        OptionalAttr<I8Attr>:$XPad0,
+        Optional<I8>:$XPad1Operand,
+        OptionalAttr<I8Attr>:$XPad1
     );
 
     let extraClassDeclaration = [{
@@ -164,11 +186,12 @@ def LoadINPOp : VTA_Load_Op<"load_INP"> {
     let results = (outs);
 
     let assemblyFormat = [{
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride `,`
-        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
+        `sram` ($SramBase^):($SramBaseOperand)? `,`
+        `dram` ($DramBase^):($DramBaseOperand)? `,`
+        `size` ($YSize^):($YSizeOperand)? `x` ($XSize^):($XSizeOperand)? `,`
+        `stride` ($XStride^):($XStrideOperand)? `,`
+        `pad` ($YPad0^):($YPad0Operand)? `,` ($YPad1^):($YPad1Operand)? `,`
+              ($XPad0^):($XPad0Operand)? `,` ($XPad1^):($XPad1Operand)?
         attr-dict
     }];
 
@@ -234,21 +257,30 @@ def LoadNoOp : VTA_Load_Op<"load_NoOp"> {
 //======================================================================================================================
 
 // STORE OUT
-def StoreOUTOp : VTA_Store_Op<"store_OUT"> {
+def StoreOUTOp : VTA_Store_Op<"store_OUT", [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
+        Optional<I16>:$SramBaseOperand,
         DefaultValuedAttr<I16Attr, "0">:$SramBase,
-        I32Attr:$DramBase,
+        Optional<I32>:$DramBaseOperand,
+        OptionalAttr<I32Attr>:$DramBase,
+        Optional<I16>:$YSizeOperand,
         DefaultValuedAttr<I16Attr, "1">:$YSize,
-        I16Attr:$XSize,
+        Optional<I16>:$XSizeOperand,
+        OptionalAttr<I16Attr>:$XSize,
+        Optional<I16>:$XStrideOperand,
         DefaultValuedAttr<I16Attr, "1">:$XStride,
+        Optional<I8>:$YPad0Operand,
         DefaultValuedAttr<I8Attr, "0">:$YPad0,
+        Optional<I8>:$YPad1Operand,
         DefaultValuedAttr<I8Attr, "0">:$YPad1,
+        Optional<I8>:$XPad0Operand,
         DefaultValuedAttr<I8Attr, "0">:$XPad0,
+        Optional<I8>:$XPad1Operand,
         DefaultValuedAttr<I8Attr, "0">:$XPad1
     );
 
@@ -260,8 +292,15 @@ def StoreOUTOp : VTA_Store_Op<"store_OUT"> {
     let results = (outs);
 
     let assemblyFormat = [{
-        `dram` $DramBase `,`
-        `size` $XSize
+        `dram` ($DramBase^):($DramBaseOperand)? `,`
+        `size` ($XSize^):($XSizeOperand)?
+        (`sram` $SramBaseOperand^)?
+        (`ysize` $YSizeOperand^)?
+        (`stride` $XStrideOperand^)?
+        (`y_pad0` $YPad0Operand^)?
+        (`y_pad1` $YPad1Operand^)?
+        (`x_pad0` $XPad0Operand^)?
+        (`x_pad1` $XPad1Operand^)?
         attr-dict
     }];
 
@@ -303,7 +342,7 @@ def StoreNoOp : VTA_Store_Op<"store_NoOp"> {
 //======================================================================================================================
 
 // IMMEDIATE ALU OPERATIONS
-class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
+class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic, [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -311,14 +350,22 @@ class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
         DefaultValuedAttr<I1Attr, "false">:$ResetReg,
 
-        I8Attr:$UopBgn,
-        I8Attr:$UopEnd,
-        I16Attr:$IterOut,
-        I16Attr:$IterIn,
-        I8Attr:$DstFactorOut,
-        I8Attr:$DstFactorIn,
-        I8Attr:$SrcFactorOut,
-        I8Attr:$SrcFactorIn,
+        Optional<I8>:$UopBgnOperand,
+        OptionalAttr<I8Attr>:$UopBgn,
+        Optional<I8>:$UopEndOperand,
+        OptionalAttr<I8Attr>:$UopEnd,
+        Optional<I16>:$IterOutOperand,
+        OptionalAttr<I16Attr>:$IterOut,
+        Optional<I16>:$IterInOperand,
+        OptionalAttr<I16Attr>:$IterIn,
+        Optional<I8>:$DstFactorOutOperand,
+        OptionalAttr<I8Attr>:$DstFactorOut,
+        Optional<I8>:$DstFactorInOperand,
+        OptionalAttr<I8Attr>:$DstFactorIn,
+        Optional<I8>:$SrcFactorOutOperand,
+        OptionalAttr<I8Attr>:$SrcFactorOut,
+        Optional<I8>:$SrcFactorInOperand,
+        OptionalAttr<I8Attr>:$SrcFactorIn,
         //I16Attr:$Imm
         Optional<I16>:$ImmOperand,
         OptionalAttr<I16Attr>:$Imm
@@ -327,11 +374,11 @@ class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
     let results = (outs);
 
     let assemblyFormat = [{
-        (`imm` $Imm^)? ($ImmOperand^)? `,`
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn `,`
-        `src` $SrcFactorOut `,` $SrcFactorIn
+        (`imm` $Imm^):($ImmOperand)? `,`
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)? `,`
+        `src` ($SrcFactorOut^):($SrcFactorOutOperand)? `,` ($SrcFactorIn^):($SrcFactorInOperand)?
         attr-dict
     }];
 
@@ -339,7 +386,7 @@ class VTA_AluImmBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
 }
 
 // REGISTER ALU OPERATIONS
-class VTA_AluRegBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
+class VTA_AluRegBase<string mnemonic> : VTA_Alu_Op<mnemonic, [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -347,24 +394,34 @@ class VTA_AluRegBase<string mnemonic> : VTA_Alu_Op<mnemonic> {
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
         DefaultValuedAttr<I1Attr, "false">:$ResetReg,
 
-        I8Attr:$UopBgn,
-        I8Attr:$UopEnd,
-        I16Attr:$IterOut,
-        I16Attr:$IterIn,
-        I8Attr:$DstFactorOut,
-        I8Attr:$DstFactorIn,
-        I8Attr:$SrcFactorOut,
-        I8Attr:$SrcFactorIn,
+        Optional<I8>:$UopBgnOperand,
+        OptionalAttr<I8Attr>:$UopBgn,
+        Optional<I8>:$UopEndOperand,
+        OptionalAttr<I8Attr>:$UopEnd,
+        Optional<I16>:$IterOutOperand,
+        OptionalAttr<I16Attr>:$IterOut,
+        Optional<I16>:$IterInOperand,
+        OptionalAttr<I16Attr>:$IterIn,
+        Optional<I8>:$DstFactorOutOperand,
+        OptionalAttr<I8Attr>:$DstFactorOut,
+        Optional<I8>:$DstFactorInOperand,
+        OptionalAttr<I8Attr>:$DstFactorIn,
+        Optional<I8>:$SrcFactorOutOperand,
+        OptionalAttr<I8Attr>:$SrcFactorOut,
+        Optional<I8>:$SrcFactorInOperand,
+        OptionalAttr<I8Attr>:$SrcFactorIn,
+        Optional<I16>:$ImmOperand,
         DefaultValuedAttr<I16Attr, "0">:$Imm
     );
 
     let results = (outs);
 
     let assemblyFormat = [{
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn `,`
-        `src` $SrcFactorOut `,` $SrcFactorIn
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)? `,`
+        `src` ($SrcFactorOut^):($SrcFactorOutOperand)? `,` ($SrcFactorIn^):($SrcFactorInOperand)?
+        (`imm_operand` $ImmOperand^)?
         attr-dict
     }];
 
@@ -498,22 +555,32 @@ def AluNoOp : VTA_Alu_Op<"alu_NoOp"> {
 //======================================================================================================================
 
 // GEMM RESET
-def GemmResetOp : VTA_Gemm_Op<"gemm_Reset"> {
+def GemmResetOp : VTA_Gemm_Op<"gemm_Reset", [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
-        I8Attr:$UopBgn,
-        I8Attr:$UopEnd,
-        I16Attr:$IterOut,
-        I16Attr:$IterIn,
-        I8Attr:$DstFactorOut,
-        I8Attr:$DstFactorIn,
+        Optional<I8>:$UopBgnOperand,
+        OptionalAttr<I8Attr>:$UopBgn,
+        Optional<I8>:$UopEndOperand,
+        OptionalAttr<I8Attr>:$UopEnd,
+        Optional<I16>:$IterOutOperand,
+        OptionalAttr<I16Attr>:$IterOut,
+        Optional<I16>:$IterInOperand,
+        OptionalAttr<I16Attr>:$IterIn,
+        Optional<I8>:$DstFactorOutOperand,
+        OptionalAttr<I8Attr>:$DstFactorOut,
+        Optional<I8>:$DstFactorInOperand,
+        OptionalAttr<I8Attr>:$DstFactorIn,
+        Optional<I8>:$SrcFactorOutOperand,
         DefaultValuedAttr<I8Attr, "0">:$SrcFactorOut,
+        Optional<I8>:$SrcFactorInOperand,
         DefaultValuedAttr<I8Attr, "0">:$SrcFactorIn,
+        Optional<I8>:$WgtFactorOutOperand,
         DefaultValuedAttr<I8Attr, "0">:$WgtFactorOut,
+        Optional<I8>:$WgtFactorInOperand,
         DefaultValuedAttr<I8Attr, "0">:$WgtFactorIn
     );
 
@@ -525,9 +592,13 @@ def GemmResetOp : VTA_Gemm_Op<"gemm_Reset"> {
     let results = (outs);
 
     let assemblyFormat = [{
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)?
+        (`src_factor_out` $SrcFactorOutOperand^)?
+        (`src_factor_in` $SrcFactorInOperand^)?
+        (`wgt_factor_out` $WgtFactorOutOperand^)?
+        (`wgt_factor_in` $WgtFactorInOperand^)?
         attr-dict
     }];
 
@@ -535,23 +606,33 @@ def GemmResetOp : VTA_Gemm_Op<"gemm_Reset"> {
 }
 
 // GEMM ACCUMULATE
-def GemmNoResetOp : VTA_Gemm_Op<"gemm"> {
+def GemmNoResetOp : VTA_Gemm_Op<"gemm", [AttrSizedOperandSegments]> {
     let arguments = (ins
         DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
         DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
         DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
 
-        I8Attr:$UopBgn,
-        I8Attr:$UopEnd,
-        I16Attr:$IterOut,
-        I16Attr:$IterIn,
-        I8Attr:$DstFactorOut,
-        I8Attr:$DstFactorIn,
-        I8Attr:$SrcFactorOut,
-        I8Attr:$SrcFactorIn,
-        I8Attr:$WgtFactorOut,
-        I8Attr:$WgtFactorIn
+        Optional<I8>:$UopBgnOperand,
+        OptionalAttr<I8Attr>:$UopBgn,
+        Optional<I8>:$UopEndOperand,
+        OptionalAttr<I8Attr>:$UopEnd,
+        Optional<I16>:$IterOutOperand,
+        OptionalAttr<I16Attr>:$IterOut,
+        Optional<I16>:$IterInOperand,
+        OptionalAttr<I16Attr>:$IterIn,
+        Optional<I8>:$DstFactorOutOperand,
+        OptionalAttr<I8Attr>:$DstFactorOut,
+        Optional<I8>:$DstFactorInOperand,
+        OptionalAttr<I8Attr>:$DstFactorIn,
+        Optional<I8>:$SrcFactorOutOperand,
+        OptionalAttr<I8Attr>:$SrcFactorOut,
+        Optional<I8>:$SrcFactorInOperand,
+        OptionalAttr<I8Attr>:$SrcFactorIn,
+        Optional<I8>:$WgtFactorOutOperand,
+        OptionalAttr<I8Attr>:$WgtFactorOut,
+        Optional<I8>:$WgtFactorInOperand,
+        OptionalAttr<I8Attr>:$WgtFactorIn
     );
 
     let extraClassDeclaration = [{
@@ -562,11 +643,11 @@ def GemmNoResetOp : VTA_Gemm_Op<"gemm"> {
     let results = (outs);
 
     let assemblyFormat = [{
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn `,`
-        `src` $SrcFactorOut `,` $SrcFactorIn `,`
-        `wgt` $WgtFactorOut `,` $WgtFactorIn
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)? `,`
+        `src` ($SrcFactorOut^):($SrcFactorOutOperand)? `,` ($SrcFactorIn^):($SrcFactorInOperand)? `,`
+        `wgt` ($WgtFactorOut^):($WgtFactorOutOperand)? `,` ($WgtFactorIn^):($WgtFactorInOperand)?
         attr-dict
     }];
 
@@ -707,7 +788,7 @@ def TransformGeneralStructure : Pass<"vta-transform-general-structure", "ModuleO
 //          https://www.youtube.com/watch?v=coS2CdNd7Io&pp=ygUhaW5nbG9yaW91cyBiYXN0YXJkcyBvcGVuaW5nIHNjZW5l
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-def LoadOp : VTA_Load_Op<"load_old"> {
+def LoadOp : VTA_Load_Op<"load_old", [AttrSizedOperandSegments]> {
     let arguments = (ins 
     DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -716,18 +797,27 @@ def LoadOp : VTA_Load_Op<"load_old"> {
     //Selects the destination SRAM. 
     I8Attr:$MemoryType,
     //Offset within the destination SRAM
-    I16Attr:$SramBase,
+    Optional<I16>:$SramBaseOperand,
+    OptionalAttr<I16Attr>:$SramBase,
     //Source byte address in DRAM
-    I32Attr:$DramBase,
+    Optional<I32>:$DramBaseOperand,
+    OptionalAttr<I32Attr>:$DramBase,
     //Transfer shape: YSize rows of XSize elements, XStride bytes apart in DRAM.
-    I16Attr:$YSize,
-    I16Attr:$XSize,
-    I16Attr:$XStride,
+    Optional<I16>:$YSizeOperand,
+    OptionalAttr<I16Attr>:$YSize,
+    Optional<I16>:$XSizeOperand,
+    OptionalAttr<I16Attr>:$XSize,
+    Optional<I16>:$XStrideOperand,
+    OptionalAttr<I16Attr>:$XStride,
     //Padding around the transferred block
-    I8Attr:$YPad0,
-    I8Attr:$YPad1,
-    I8Attr:$XPad0,
-    I8Attr:$XPad1);
+    Optional<I8>:$YPad0Operand,
+    OptionalAttr<I8Attr>:$YPad0,
+    Optional<I8>:$YPad1Operand,
+    OptionalAttr<I8Attr>:$YPad1,
+    Optional<I8>:$XPad0Operand,
+    OptionalAttr<I8Attr>:$XPad0,
+    Optional<I8>:$XPad1Operand,
+    OptionalAttr<I8Attr>:$XPad1);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_LOAD; }
@@ -758,18 +848,19 @@ def LoadOp : VTA_Load_Op<"load_old"> {
      //MemoryType in VTAOps.cpp
     let assemblyFormat = [{
         `mem` $MemoryType `,` 
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride `,`
-        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
+        `sram` ($SramBase^):($SramBaseOperand)? `,`
+        `dram` ($DramBase^):($DramBaseOperand)? `,`
+        `size` ($YSize^):($YSizeOperand)? `x` ($XSize^):($XSizeOperand)? `,`
+        `stride` ($XStride^):($XStrideOperand)? `,`
+        `pad` ($YPad0^):($YPad0Operand)? `,` ($YPad1^):($YPad1Operand)? `,`
+              ($XPad0^):($XPad0Operand)? `,` ($XPad1^):($XPad1Operand)?
         attr-dict
     }];
     let hasVerifier = 1;
 
 }
 
-def StoreOp : VTA_Store_Op<"store_old"> {
+def StoreOp : VTA_Store_Op<"store_old", [AttrSizedOperandSegments]> {
     let arguments = (ins
     DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -778,18 +869,27 @@ def StoreOp : VTA_Store_Op<"store_old"> {
     //Selects the destination SRAM. 
     I8Attr:$MemoryType,
     //Offset within the destination SRAM
-    I16Attr:$SramBase,
+    Optional<I16>:$SramBaseOperand,
+    OptionalAttr<I16Attr>:$SramBase,
     //Source byte address in DRAM
-    I32Attr:$DramBase,
+    Optional<I32>:$DramBaseOperand,
+    OptionalAttr<I32Attr>:$DramBase,
     //Transfer shape: YSize rows of XSize elements, XStride bytes apart in DRAM.
-    I16Attr:$YSize,
-    I16Attr:$XSize,
-    I16Attr:$XStride,
+    Optional<I16>:$YSizeOperand,
+    OptionalAttr<I16Attr>:$YSize,
+    Optional<I16>:$XSizeOperand,
+    OptionalAttr<I16Attr>:$XSize,
+    Optional<I16>:$XStrideOperand,
+    OptionalAttr<I16Attr>:$XStride,
     //Padding around the transferred block
-    I8Attr:$YPad0,
-    I8Attr:$YPad1,
-    I8Attr:$XPad0,
-    I8Attr:$XPad1);
+    Optional<I8>:$YPad0Operand,
+    OptionalAttr<I8Attr>:$YPad0,
+    Optional<I8>:$YPad1Operand,
+    OptionalAttr<I8Attr>:$YPad1,
+    Optional<I8>:$XPad0Operand,
+    OptionalAttr<I8Attr>:$XPad0,
+    Optional<I8>:$XPad1Operand,
+    OptionalAttr<I8Attr>:$XPad1);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_STORE; }
@@ -819,17 +919,18 @@ def StoreOp : VTA_Store_Op<"store_old"> {
      //MemoryType in VTAOps.cpp
     let assemblyFormat = [{
         `mem` $MemoryType `,`
-        `sram` $SramBase `,`
-        `dram` $DramBase `,`
-        `size` $YSize `x` $XSize `,`
-        `stride` $XStride `,`
-        `pad` $YPad0 `,` $YPad1 `,` $XPad0 `,` $XPad1
+        `sram` ($SramBase^):($SramBaseOperand)? `,`
+        `dram` ($DramBase^):($DramBaseOperand)? `,`
+        `size` ($YSize^):($YSizeOperand)? `x` ($XSize^):($XSizeOperand)? `,`
+        `stride` ($XStride^):($XStrideOperand)? `,`
+        `pad` ($YPad0^):($YPad0Operand)? `,` ($YPad1^):($YPad1Operand)? `,`
+              ($XPad0^):($XPad0Operand)? `,` ($XPad1^):($XPad1Operand)?
         attr-dict
     }];
     let hasVerifier = 1;
 }
 
-def GemmOp : VTA_Gemm_Op<"gemm_old"> {
+def GemmOp : VTA_Gemm_Op<"gemm_old", [AttrSizedOperandSegments]> {
     let arguments = (ins
     DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
@@ -837,18 +938,28 @@ def GemmOp : VTA_Gemm_Op<"gemm_old"> {
     DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
     I1Attr:$ResetReg,
     //Range of uop records to execute
-    I8Attr:$UopBgn,
-    I8Attr:$UopEnd,
+    Optional<I8>:$UopBgnOperand,
+    OptionalAttr<I8Attr>:$UopBgn,
+    Optional<I8>:$UopEndOperand,
+    OptionalAttr<I8Attr>:$UopEnd,
     //Loop shape: IterOut iterations of IterIn.
-    I16Attr:$IterOut,
-    I16Attr:$IterIn,
+    Optional<I16>:$IterOutOperand,
+    OptionalAttr<I16Attr>:$IterOut,
+    Optional<I16>:$IterInOperand,
+    OptionalAttr<I16Attr>:$IterIn,
     //Address multipliers applied when advancing the acc/src/wgt pointers.
-    I8Attr:$DstFactorOut,
-    I8Attr:$DstFactorIn,
-    I8Attr:$SrcFactorOut,
-    I8Attr:$SrcFactorIn,
-    I8Attr:$WgtFactorOut,
-    I8Attr:$WgtFactorIn);
+    Optional<I8>:$DstFactorOutOperand,
+    OptionalAttr<I8Attr>:$DstFactorOut,
+    Optional<I8>:$DstFactorInOperand,
+    OptionalAttr<I8Attr>:$DstFactorIn,
+    Optional<I8>:$SrcFactorOutOperand,
+    OptionalAttr<I8Attr>:$SrcFactorOut,
+    Optional<I8>:$SrcFactorInOperand,
+    OptionalAttr<I8Attr>:$SrcFactorIn,
+    Optional<I8>:$WgtFactorOutOperand,
+    OptionalAttr<I8Attr>:$WgtFactorOut,
+    Optional<I8>:$WgtFactorInOperand,
+    OptionalAttr<I8Attr>:$WgtFactorIn);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_GEMM; }
@@ -878,36 +989,45 @@ def GemmOp : VTA_Gemm_Op<"gemm_old"> {
 
     let assemblyFormat = [{
         `reset` $ResetReg `,`
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn `,`
-        `src` $SrcFactorOut `,` $SrcFactorIn `,`
-        `wgt` $WgtFactorOut `,` $WgtFactorIn
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)? `,`
+        `src` ($SrcFactorOut^):($SrcFactorOutOperand)? `,` ($SrcFactorIn^):($SrcFactorInOperand)? `,`
+        `wgt` ($WgtFactorOut^):($WgtFactorOutOperand)? `,` ($WgtFactorIn^):($WgtFactorInOperand)?
         attr-dict
     }];
     let hasVerifier = 1;
 }
 
-def AluOp : VTA_Alu_Op<"alu_old"> {
+def AluOp : VTA_Alu_Op<"alu_old", [AttrSizedOperandSegments]> {
     let arguments = (ins
     DefaultValuedAttr<I1Attr, "false">:$PopPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PopNextDep,
     DefaultValuedAttr<I1Attr, "false">:$PushPrevDep,
     DefaultValuedAttr<I1Attr, "false">:$PushNextDep,
     I1Attr:$ResetReg,
-    I8Attr:$UopBgn,
-    I8Attr:$UopEnd,
-    I16Attr:$IterOut,
-    I16Attr:$IterIn,
-    I8Attr:$DstFactorOut,
-    I8Attr:$DstFactorIn,
-    I8Attr:$SrcFactorOut,
-    I8Attr:$SrcFactorIn,
+    Optional<I8>:$UopBgnOperand,
+    OptionalAttr<I8Attr>:$UopBgn,
+    Optional<I8>:$UopEndOperand,
+    OptionalAttr<I8Attr>:$UopEnd,
+    Optional<I16>:$IterOutOperand,
+    OptionalAttr<I16Attr>:$IterOut,
+    Optional<I16>:$IterInOperand,
+    OptionalAttr<I16Attr>:$IterIn,
+    Optional<I8>:$DstFactorOutOperand,
+    OptionalAttr<I8Attr>:$DstFactorOut,
+    Optional<I8>:$DstFactorInOperand,
+    OptionalAttr<I8Attr>:$DstFactorIn,
+    Optional<I8>:$SrcFactorOutOperand,
+    OptionalAttr<I8Attr>:$SrcFactorOut,
+    Optional<I8>:$SrcFactorInOperand,
+    OptionalAttr<I8Attr>:$SrcFactorIn,
     //Selects MIN/MAX/ADD/SHR/MUL
     I8Attr:$AluOpcode,
     //If true, the second operand is Imm instead of an SRAM read.
     I1Attr:$UseImm,
-    I16Attr:$Imm);
+    Optional<I16>:$ImmOperand,
+    OptionalAttr<I16Attr>:$Imm);
 
     let extraClassDeclaration = [{
         uint8_t getOpcode() { return VTA_OPCODE_ALU; }
@@ -938,12 +1058,12 @@ def AluOp : VTA_Alu_Op<"alu_old"> {
 
     let assemblyFormat = [{
         `reset` $ResetReg `,`
-        `uop` $UopBgn `to` $UopEnd `,`
-        `iter` $IterOut `x` $IterIn `,`
-        `dst` $DstFactorOut `,` $DstFactorIn `,`
-        `src` $SrcFactorOut `,` $SrcFactorIn `,`
+        `uop` ($UopBgn^):($UopBgnOperand)? `to` ($UopEnd^):($UopEndOperand)? `,`
+        `iter` ($IterOut^):($IterOutOperand)? `x` ($IterIn^):($IterInOperand)? `,`
+        `dst` ($DstFactorOut^):($DstFactorOutOperand)? `,` ($DstFactorIn^):($DstFactorInOperand)? `,`
+        `src` ($SrcFactorOut^):($SrcFactorOutOperand)? `,` ($SrcFactorIn^):($SrcFactorInOperand)? `,`
         `alu` $AluOpcode `,`
-        `imm` $UseImm `,` $Imm
+        `imm` $UseImm `,` ($Imm^):($ImmOperand)?
         attr-dict
     }];
     let hasVerifier = 1;

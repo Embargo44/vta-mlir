@@ -1,6 +1,5 @@
 //                                IMPLEMENTS PASSES. CALLED FROM VTA-OPT AND VTA-TRANSLATE
 //======================================================================================================================//
-
 // Order matters:
 //   1. mlir/Pass/Pass.h brings OperationPass into scope.
 //   2. `using namespace mlir` is required because the generated VTAPasses.h.inc refers to `ModuleOp` unqualified.
@@ -11,23 +10,33 @@
 #include "VTA/CustomHardwareDescription.h"
 
 // Standard MLIR infrastructure.
-#include "mlir/IR/BuiltinOps.h"           
-#include "mlir/Pass/Pass.h"               
-#include "mlir/Pass/PassManager.h"        
-#include "mlir/Dialect/Func/IR/FuncOps.h" 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 
-// Generated from VTAOps.td 
-#include "VTA/VTADialect.h"               
-#include "VTA/VTAOps.h"              
+// Generated from VTAOps.td
+#include "VTA/VTADialect.h"
+#include "VTA/VTAOps.h"
 
 using namespace mlir;
+
+// Resolve an SSA constant operand; otherwise use the literal attribute value.
+static int64_t getArithConstantValue(Value operand) {
+    Operation *constantOp = operand.getDefiningOp();
+    return constantOp->getAttrOfType<IntegerAttr>("value").getInt();
+}
+
+template <typename T>
+static int64_t getFieldValue(Value operand, llvm::Optional<T> attributeValue) {
+    return operand ? getArithConstantValue(operand)
+                   : static_cast<int64_t>(attributeValue.value_or(0));
+}
 
 #define GEN_PASS_CLASSES
 #include "VTA/VTAPasses.h.inc"
 
 #include "VTA/Passes.h"  // factory declarations for the passes
-
-
 
 namespace mlir { namespace vta { namespace {
 
@@ -35,47 +44,41 @@ namespace mlir { namespace vta { namespace {
 //                                        //PASS DECLARATIONS
 //========================================================================================================================//
 
-
-
-
 //Checks program shape: one vta.func, at least one load.
 struct CheckStructurePass : public CheckStructureBase<CheckStructurePass> {
-    void runOnOperation() override;};    
-//========================================================================================================================//
+    void runOnOperation() override;
+};
+
 //Everything tied to the ucode op: first op is ucode, exactly one, UopEnd fits size.
 struct CheckUcodePass : public CheckUcodeBase<CheckUcodePass> {
     void runOnOperation() override;
 };
-    
 
-
-//========================================================================================================================//
 //Inserts a vta.load that copies the ucode records into uop SRAM.
 struct TransformUcodeToLoadOpPass : public TransformUcodeToLoadOpBase<TransformUcodeToLoadOpPass> {
-    void runOnOperation() override;}; 
+    void runOnOperation() override;
+};
 
-//========================================================================================================================//
 //Scans the token queues for balance, dead flags, and unreachable finish.
 struct CheckDependancyPass : public CheckDependancyBase<CheckDependancyPass> {
-    void runOnOperation() override;};   
+    void runOnOperation() override;
+};
 
-//========================================================================================================================//
 //Merges duplicate ucodes, moves ucode to top of body. (kinda useless right now)
 struct TransformGeneralStructurePass : public TransformGeneralStructureBase<TransformGeneralStructurePass> {
-    void runOnOperation() override;};
+    void runOnOperation() override;
+};
 
-//========================================================================================================================//
 //Inserts a dummy ACC load before finish to wait for the store core.
-//struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
-    //void runOnOperation() override;};    
-   
-
-
+/*
+struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
+    void runOnOperation() override;
+};
+*/
 
 //========================================================================================================================//
 //                                        //PASSES FUNCTIONALITY
 //========================================================================================================================//
-
 
 //Checks program shape: one vta.func, at least one load.
 void CheckStructurePass::runOnOperation() {
@@ -105,6 +108,7 @@ void CheckStructurePass::runOnOperation() {
     if (failed(inner.run(module)))
         signalPassFailure();
 }
+
 //===============================================================================//
 //Everything that has to do with the ucode op.
 void CheckUcodePass::runOnOperation() {
@@ -114,7 +118,7 @@ void CheckUcodePass::runOnOperation() {
     llvm::SmallVector<Operation*> opSnapshot; //Just a snapshot
     module.walk([&](Operation *op) {
         if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOpInterface,
-        vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
+                vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
             opSnapshot.push_back(op);
     });
 
@@ -151,14 +155,14 @@ void CheckUcodePass::runOnOperation() {
     unsigned n = theUcode.getRecords().size();
     for (Operation *op : opSnapshot) {
         if (auto g = dyn_cast<vta::GemmOpInterface>(op)) {
-            if (g.getUopEnd() > n) {
+            if (getFieldValue(g.getUopEndOperand(), g.getUopEnd()) > n) {
                 g.emitOpError("UopEnd exceeds ucode record count");
                 signalPassFailure();
                 return;
             }
         }
         if (auto a = dyn_cast<vta::AluOpInterface>(op)) {
-            if (a.getUopEnd() > n) {
+            if (getFieldValue(a.getUopEndOperand(), a.getUopEnd()) > n) {
                 a.emitOpError("UopEnd exceeds ucode record count");
                 signalPassFailure();
                 return;
@@ -167,262 +171,266 @@ void CheckUcodePass::runOnOperation() {
     }
 }
 
-
 //===============================================================================//
- //CHECK_DEPENDANCY_PASS
-    // OpKind: what pipeline role an op plays. Flag: the four dependency bits.
-    // Queue: the four token queues between stages.
-    enum class OpKind { Load, Compute, Store, Finish, None };
-    enum class Flag   { WaitPrev, WaitNext, SignalPrev, SignalNext, None };
-    enum class Queue  { LoadToCompute, ComputeToLoad, ComputeToStore, StoreToCompute, None };
+//CHECK_DEPENDANCY_PASS
+// OpKind: what pipeline role an op plays. Flag: the four dependency bits.
+// Queue: the four token queues between stages.
+enum class OpKind { Load, Compute, Store, Finish, None };
+enum class Flag { WaitPrev, WaitNext, SignalPrev, SignalNext, None };
+enum class Queue { LoadToCompute, ComputeToLoad, ComputeToStore, StoreToCompute, None };
 
-    
-    // Map an op to its pipeline role
-    static OpKind kindOf(Operation *op) {
-        if (auto load = dyn_cast<vta::LoadOpInterface>(op)) {
-            uint8_t mem_type = load.getMemoryType();
-            // UOP (0) and ACC (3) route to the Compute core
-            if (mem_type == 0 || mem_type == 3) return OpKind::Compute;
-            // INP (2) and WGT (1) route to the Load core
-            return OpKind::Load;
-        }
-        if (isa<vta::StoreOpInterface>(op)) return OpKind::Store;
-        if (isa<vta::GemmOpInterface, vta::AluOpInterface>(op)) return OpKind::Compute;
-        if (isa<vta::FinishOp>(op)) return OpKind::Finish;
-        return OpKind::None;
+// Map an op to its pipeline role
+static OpKind kindOf(Operation *op) {
+    if (auto load = dyn_cast<vta::LoadOpInterface>(op)) {
+        uint8_t mem_type = load.getMemoryType();
+        // UOP (0) and ACC (3) route to the Compute core
+        if (mem_type == 0 || mem_type == 3) return OpKind::Compute;
+        // INP (2) and WGT (1) route to the Load core
+        return OpKind::Load;
     }
-
-    // Load only talks to compute (next side), store only on prev. Compute touches all four.
-    static bool isFlagLive(OpKind k, Flag f) {
-        switch (k) {
-        case OpKind::Load:
-            return f == Flag::WaitNext || f == Flag::SignalNext;
-        case OpKind::Compute:
-            return true; // ACC loads and ALUs can use all four flags
-        case OpKind::Store:
-            return f == Flag::WaitPrev || f == Flag::SignalPrev;
-        case OpKind::Finish:
-        case OpKind::None:
-            return false;
-        }
-        return false;
-    }
-
-    // Read a flag from an op, whatever its concrete type.
-    static bool readFlag(Operation *op, Flag f) {
-        if (auto o = dyn_cast<vta::LoadOpInterface>(op)) {
-            switch (f) {
-            case Flag::WaitPrev:   return o.getPopPrevDep();
-            case Flag::WaitNext:   return o.getPopNextDep();
-            case Flag::SignalPrev: return o.getPushPrevDep();
-            case Flag::SignalNext: return o.getPushNextDep();
-            default: return false;
-            }
-        }
-        if (auto o = dyn_cast<vta::StoreOpInterface>(op)) {
-            switch (f) {
-            case Flag::WaitPrev:   return o.getPopPrevDep();
-            case Flag::WaitNext:   return o.getPopNextDep();
-            case Flag::SignalPrev: return o.getPushPrevDep();
-            case Flag::SignalNext: return o.getPushNextDep();
-            default: return false;
-            }
-        }
-        if (auto o = dyn_cast<vta::GemmOpInterface>(op)) {
-            switch (f) {
-            case Flag::WaitPrev:   return o.getPopPrevDep();
-            case Flag::WaitNext:   return o.getPopNextDep();
-            case Flag::SignalPrev: return o.getPushPrevDep();
-            case Flag::SignalNext: return o.getPushNextDep();
-            default: return false;
-            }
-        }
-        if (auto o = dyn_cast<vta::AluOpInterface>(op)) {
-            switch (f) {
-            case Flag::WaitPrev:   return o.getPopPrevDep();
-            case Flag::WaitNext:   return o.getPopNextDep();
-            case Flag::SignalPrev: return o.getPushPrevDep();
-            case Flag::SignalNext: return o.getPushNextDep();
-            default: return false;
-            }
-        }
-        return false;
-    }
-
-    
-    // Which queue a flag touches for an op kind. Dead flags return None.
-    static Queue queueOf(OpKind k, Flag f) {
-        if (!isFlagLive(k, f)) return Queue::None;
-
-        if (k == OpKind::Load) {
-            if (f == Flag::WaitNext)   return Queue::ComputeToLoad;
-            if (f == Flag::SignalNext) return Queue::LoadToCompute;
-        }
-        if (k == OpKind::Compute) {
-            if (f == Flag::WaitPrev)   return Queue::LoadToCompute;
-            if (f == Flag::WaitNext)   return Queue::StoreToCompute;
-            if (f == Flag::SignalPrev) return Queue::ComputeToLoad;
-            if (f == Flag::SignalNext) return Queue::ComputeToStore;
-        }
-        if (k == OpKind::Store) {
-            if (f == Flag::WaitPrev)   return Queue::ComputeToStore;
-            if (f == Flag::SignalPrev) return Queue::StoreToCompute;
-        }
-        return Queue::None;
-    }
-
-    //===============================================================================//
-    void CheckDependancyPass::runOnOperation() {
-        ModuleOp module = getOperation();
-
-        //walk
-        llvm::SmallVector<Operation*> opSnapshot;//// Snapshot of VTA ops in program order.
-        module.walk([&](Operation *op) {
-            if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOpInterface,
-        vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
-                opSnapshot.push_back(op);
-        });
-
-        
-        const Flag flags[] = { Flag::WaitPrev, Flag::WaitNext,
-                            Flag::SignalPrev, Flag::SignalNext };
-
-        // Check 1: warn on any flag that has no effect for its op kind.
-        for (Operation *op : opSnapshot) {
-            OpKind k = kindOf(op);
-            if (k == OpKind::None || k == OpKind::Finish) continue;
-            for (int i = 0; i < 4; i++) {
-                if (readFlag(op, flags[i]) && !isFlagLive(k, flags[i]))
-                    op->emitWarning("this flag has no effect for this op kind");
-            }
-        }
-
-        // One counter per queue. Signals increment, waits decrement.
-        int loadToCompute  = 0;
-        int computeToLoad  = 0;
-        int computeToStore = 0;
-        int storeToCompute = 0;
-
-        bool anyFlagSet = false;
-        Operation *firstStuckOp = nullptr;
-        Operation *finishOp = nullptr;
-
-        // Decrement. False if the counter would go negative, i.e. a wait has no matching signal earlier in program order.
-        auto dec = [&](Queue q, Operation *op) -> bool {
-            switch (q) {
-            case Queue::LoadToCompute:
-                if (loadToCompute == 0) return false;
-                loadToCompute--; return true;
-            case Queue::ComputeToLoad:
-                if (computeToLoad == 0) return false;
-                computeToLoad--; return true;
-            case Queue::ComputeToStore:
-                if (computeToStore == 0) return false;
-                computeToStore--; return true;
-            case Queue::StoreToCompute:
-                if (storeToCompute == 0) return false;
-                storeToCompute--; return true;
-            default: return true;
-            }
-        };
-
-        auto inc = [&](Queue q) {
-            switch (q) {
-            case Queue::LoadToCompute:  loadToCompute++;  break;
-            case Queue::ComputeToLoad:  computeToLoad++;  break;
-            case Queue::ComputeToStore: computeToStore++; break;
-            case Queue::StoreToCompute: storeToCompute++; break;
-            default: break;
-            }
-        };
-
-        // Walk in program order, updating counters. Record first stuck op and first finish op.
-        for (Operation *op : opSnapshot) {
-            OpKind k = kindOf(op);
-
-            if (k == OpKind::Finish) {
-                if (!finishOp) finishOp = op;
-                continue;
-            }
-            if (k == OpKind::None) continue;
-
-            for (int i = 0; i < 4; i++) {
-                Flag f = flags[i];
-                if (!readFlag(op, f)) continue;
-                anyFlagSet = true;
-
-                Queue q = queueOf(k, f);
-                if (q == Queue::None) continue;  // dead flag, already warned in check 1
-
-                bool isWait = (f == Flag::WaitPrev || f == Flag::WaitNext);
-                if (isWait) {
-                    if (!dec(q, op) && !firstStuckOp)
-                        firstStuckOp = op;
-                } else {
-                    inc(q);
-                }
-            }
-        }
-
-        // no flags anywhere.
-        if (!anyFlagSet) {
-            module.emitWarning("no dependency flags set anywhere; "
-                            "this program will likely hang in the simulator");
-        }
-
-        // end balance. Positive -> extra signals, warn. Negative -> extra waits, they block, error.
-        auto reportQueue = [&](const char *name, int value) -> LogicalResult {
-            if (value > 0) {
-                module.emitWarning() << name << " has " << value
-                                    << " unconsumed token(s)";
-                return success();
-            }
-            if (value < 0) {
-                module.emitError() << name << " has " << -value
-                                << " unconsumed wait(s); simulator will block";
-                return failure();
-            }
-            return success();
-        };
-
-        bool balanceOk = true;
-        balanceOk &= succeeded(reportQueue("LoadToCompute",  loadToCompute));
-        balanceOk &= succeeded(reportQueue("ComputeToLoad",  computeToLoad));
-        balanceOk &= succeeded(reportQueue("ComputeToStore", computeToStore));
-        balanceOk &= succeeded(reportQueue("StoreToCompute", storeToCompute));
-
-        // stuck op before finish means finish is unreachable.
-        if (firstStuckOp && finishOp && firstStuckOp->isBeforeInBlock(finishOp)) {
-            module.emitWarning("execution cannot reach vta.finish: "
-                            "an earlier op waits on a queue that is never signaled");
-        }
-
-        if (!balanceOk)
-            signalPassFailure();
-    
+    if (isa<vta::StoreOpInterface>(op)) return OpKind::Store;
+    if (isa<vta::GemmOpInterface, vta::AluOpInterface>(op)) return OpKind::Compute;
+    if (isa<vta::FinishOp>(op)) return OpKind::Finish;
+    return OpKind::None;
 }
 
+// Load only talks to compute (next side), store only on prev. Compute touches all four.
+static bool isFlagLive(OpKind k, Flag f) {
+    switch (k) {
+    case OpKind::Load:
+        return f == Flag::WaitNext || f == Flag::SignalNext;
+    case OpKind::Compute:
+        return true; // ACC loads and ALUs can use all four flags
+    case OpKind::Store:
+        return f == Flag::WaitPrev || f == Flag::SignalPrev;
+    case OpKind::Finish:
+    case OpKind::None:
+        return false;
+    }
+    return false;
+}
+
+// Read a flag from an op, whatever its concrete type.
+static bool readFlag(Operation *op, Flag f) {
+    if (auto o = dyn_cast<vta::LoadOpInterface>(op)) {
+        switch (f) {
+        case Flag::WaitPrev: return o.getPopPrevDep();
+        case Flag::WaitNext: return o.getPopNextDep();
+        case Flag::SignalPrev: return o.getPushPrevDep();
+        case Flag::SignalNext: return o.getPushNextDep();
+        default: return false;
+        }
+    }
+    if (auto o = dyn_cast<vta::StoreOpInterface>(op)) {
+        switch (f) {
+        case Flag::WaitPrev: return o.getPopPrevDep();
+        case Flag::WaitNext: return o.getPopNextDep();
+        case Flag::SignalPrev: return o.getPushPrevDep();
+        case Flag::SignalNext: return o.getPushNextDep();
+        default: return false;
+        }
+    }
+    if (auto o = dyn_cast<vta::GemmOpInterface>(op)) {
+        switch (f) {
+        case Flag::WaitPrev: return o.getPopPrevDep();
+        case Flag::WaitNext: return o.getPopNextDep();
+        case Flag::SignalPrev: return o.getPushPrevDep();
+        case Flag::SignalNext: return o.getPushNextDep();
+        default: return false;
+        }
+    }
+    if (auto o = dyn_cast<vta::AluOpInterface>(op)) {
+        switch (f) {
+        case Flag::WaitPrev: return o.getPopPrevDep();
+        case Flag::WaitNext: return o.getPopNextDep();
+        case Flag::SignalPrev: return o.getPushPrevDep();
+        case Flag::SignalNext: return o.getPushNextDep();
+        default: return false;
+        }
+    }
+    return false;
+}
+
+// Which queue a flag touches for an op kind. Dead flags return None.
+static Queue queueOf(OpKind k, Flag f) {
+    if (!isFlagLive(k, f)) return Queue::None;
+
+    if (k == OpKind::Load) {
+        if (f == Flag::WaitNext) return Queue::ComputeToLoad;
+        if (f == Flag::SignalNext) return Queue::LoadToCompute;
+    }
+    if (k == OpKind::Compute) {
+        if (f == Flag::WaitPrev) return Queue::LoadToCompute;
+        if (f == Flag::WaitNext) return Queue::StoreToCompute;
+        if (f == Flag::SignalPrev) return Queue::ComputeToLoad;
+        if (f == Flag::SignalNext) return Queue::ComputeToStore;
+    }
+    if (k == OpKind::Store) {
+        if (f == Flag::WaitPrev) return Queue::ComputeToStore;
+        if (f == Flag::SignalPrev) return Queue::StoreToCompute;
+    }
+    return Queue::None;
+}
+
+//===============================================================================//
+void CheckDependancyPass::runOnOperation() {
+    ModuleOp module = getOperation();
+
+    //walk
+    llvm::SmallVector<Operation*> opSnapshot;//// Snapshot of VTA ops in program order.
+    module.walk([&](Operation *op) {
+        if (isa<vta::UcodeOp, vta::LoadOpInterface, vta::StoreOpInterface,
+                vta::GemmOpInterface, vta::AluOpInterface, vta::FinishOp>(op))
+            opSnapshot.push_back(op);
+    });
+
+    const Flag flags[] = { Flag::WaitPrev, Flag::WaitNext,
+                           Flag::SignalPrev, Flag::SignalNext };
+
+    // Check 1: warn on any flag that has no effect for its op kind.
+    for (Operation *op : opSnapshot) {
+        OpKind k = kindOf(op);
+        if (k == OpKind::None || k == OpKind::Finish) continue;
+        for (int i = 0; i < 4; i++) {
+            if (readFlag(op, flags[i]) && !isFlagLive(k, flags[i]))
+                op->emitWarning("this flag has no effect for this op kind");
+        }
+    }
+
+    // One counter per queue. Signals increment, waits decrement.
+    int loadToCompute = 0;
+    int computeToLoad = 0;
+    int computeToStore = 0;
+    int storeToCompute = 0;
+
+    bool anyFlagSet = false;
+    Operation *firstStuckOp = nullptr;
+    Operation *finishOp = nullptr;
+
+    // Decrement. False if the counter would go negative, i.e. a wait has no matching signal earlier in program order.
+    auto dec = [&](Queue q, Operation *op) -> bool {
+        switch (q) {
+        case Queue::LoadToCompute:
+            if (loadToCompute == 0) return false;
+            loadToCompute--; return true;
+        case Queue::ComputeToLoad:
+            if (computeToLoad == 0) return false;
+            computeToLoad--; return true;
+        case Queue::ComputeToStore:
+            if (computeToStore == 0) return false;
+            computeToStore--; return true;
+        case Queue::StoreToCompute:
+            if (storeToCompute == 0) return false;
+            storeToCompute--; return true;
+        default: return true;
+        }
+    };
+
+    auto inc = [&](Queue q) {
+        switch (q) {
+        case Queue::LoadToCompute: loadToCompute++; break;
+        case Queue::ComputeToLoad: computeToLoad++; break;
+        case Queue::ComputeToStore: computeToStore++; break;
+        case Queue::StoreToCompute: storeToCompute++; break;
+        default: break;
+        }
+    };
+
+    // Walk in program order, updating counters. Record first stuck op and first finish op.
+    for (Operation *op : opSnapshot) {
+        OpKind k = kindOf(op);
+
+        if (k == OpKind::Finish) {
+            if (!finishOp) finishOp = op;
+            continue;
+        }
+        if (k == OpKind::None) continue;
+
+        for (int i = 0; i < 4; i++) {
+            Flag f = flags[i];
+            if (!readFlag(op, f)) continue;
+            anyFlagSet = true;
+
+            Queue q = queueOf(k, f);
+            if (q == Queue::None) continue;  // dead flag, already warned in check 1
+
+            bool isWait = (f == Flag::WaitPrev || f == Flag::WaitNext);
+            if (isWait) {
+                if (!dec(q, op) && !firstStuckOp)
+                    firstStuckOp = op;
+            } else {
+                inc(q);
+            }
+        }
+    }
+
+    // no flags anywhere.
+    if (!anyFlagSet) {
+        module.emitWarning("no dependency flags set anywhere; "
+                           "this program will likely hang in the simulator");
+    }
+
+    // end balance. Positive -> extra signals, warn. Negative -> extra waits, they block, error.
+    auto reportQueue = [&](const char *name, int value) -> LogicalResult {
+        if (value > 0) {
+            module.emitWarning() << name << " has " << value
+                                 << " unconsumed token(s)";
+            return success();
+        }
+        if (value < 0) {
+            module.emitError() << name << " has " << -value
+                               << " unconsumed wait(s); simulator will block";
+            return failure();
+        }
+        return success();
+    };
+
+    bool balanceOk = true;
+    balanceOk &= succeeded(reportQueue("LoadToCompute", loadToCompute));
+    balanceOk &= succeeded(reportQueue("ComputeToLoad", computeToLoad));
+    balanceOk &= succeeded(reportQueue("ComputeToStore", computeToStore));
+    balanceOk &= succeeded(reportQueue("StoreToCompute", storeToCompute));
+
+    // stuck op before finish means finish is unreachable.
+    if (firstStuckOp && finishOp && firstStuckOp->isBeforeInBlock(finishOp)) {
+        module.emitWarning("execution cannot reach vta.finish: "
+                           "an earlier op waits on a queue that is never signaled");
+    }
+
+    if (!balanceOk)
+        signalPassFailure();
+}
 
 //===============================================================================//
 //Ucode has to be loaded. This does that
 void TransformUcodeToLoadOpPass::runOnOperation() {
     ModuleOp module = getOperation();
 
-    module.walk([&](vta::UcodeOp ucodeOp) {                                  
-    OpBuilder builder(ucodeOp);                                          
-    builder.setInsertionPointAfter(ucodeOp);                             
-    unsigned int n = ucodeOp.getRecords().size();                       
+    module.walk([&](vta::UcodeOp ucodeOp) {
+        OpBuilder builder(ucodeOp);
+        builder.setInsertionPointAfter(ucodeOp);
+        unsigned int n = ucodeOp.getRecords().size();
 
-    builder.create<vta::LoadOp>(
-                ucodeOp.getLoc(),
-                (bool)false, (bool)false, (bool)false, (bool)false,
-                (uint8_t)0, (uint16_t)0, (uint32_t)0,
-                (uint16_t)1, (uint16_t)n, (uint16_t)n,
-                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0);  
-                //cast everiething for safet. If not problems (change at your own peril)
-    });                                                                     
+        OperationState loadState(ucodeOp.getLoc(), vta::LoadUOPOp::getOperationName());
+        loadState.addAttribute("PopPrevDep", builder.getBoolAttr(false));
+        loadState.addAttribute("PopNextDep", builder.getBoolAttr(false));
+        loadState.addAttribute("PushPrevDep", builder.getBoolAttr(false));
+        loadState.addAttribute("PushNextDep", builder.getBoolAttr(false));
+        loadState.addAttribute("SramBase", builder.getIntegerAttr(builder.getIntegerType(16), 0));
+        loadState.addAttribute("DramBase", builder.getIntegerAttr(builder.getIntegerType(32), 0));
+        loadState.addAttribute("YSize", builder.getIntegerAttr(builder.getIntegerType(16), 1));
+        loadState.addAttribute("XSize", builder.getIntegerAttr(builder.getIntegerType(16), n));
+        loadState.addAttribute("XStride", builder.getIntegerAttr(builder.getIntegerType(16), n));
+        loadState.addAttribute("YPad0", builder.getIntegerAttr(builder.getIntegerType(8), 0));
+        loadState.addAttribute("YPad1", builder.getIntegerAttr(builder.getIntegerType(8), 0));
+        loadState.addAttribute("XPad0", builder.getIntegerAttr(builder.getIntegerType(8), 0));
+        loadState.addAttribute("XPad1", builder.getIntegerAttr(builder.getIntegerType(8), 0));
+
+        loadState.addAttribute("operand_segment_sizes",builder.getI32VectorAttr({0, 0, 0, 0, 0, 0, 0, 0, 0}));
+        builder.create(loadState);
+        //cast everything for safety. If no problems (change at your own peril)
+    });
 }
-
 
 //===============================================================================//
 //Merges duplicate ucodes, moves ucode to top of body.
@@ -476,7 +484,6 @@ void TransformGeneralStructurePass::runOnOperation() {
         signalPassFailure();
 }
 
-
 //===============================================================================//
 //Inserts a dummy ACC load before finish to wait for the store core.
 /*
@@ -485,7 +492,7 @@ void TransformInsertDummyFinishLoadPass::runOnOperation() {
 
     module.walk([&](vta::FuncOp funcOp) {
         Block &body = funcOp.getBody().front();
-        
+
         // Find the finish op (which is the terminator)
         Operation *finishOp = body.getTerminator();
         if (!isa<vta::FinishOp>(finishOp)) return;
@@ -507,7 +514,7 @@ void TransformInsertDummyFinishLoadPass::runOnOperation() {
                 storeOp.getYPad0(), storeOp.getYPad1(), storeOp.getXPad0(), storeOp.getXPad1()
             );
             storeOp.erase();
-            
+
             // Insert the dummy load after the new store, before finish
             OpBuilder dummyBuilder(newStore);
             dummyBuilder.setInsertionPointAfter(newStore);
@@ -519,63 +526,51 @@ void TransformInsertDummyFinishLoadPass::runOnOperation() {
                 (uint16_t)0, (uint16_t)0, (uint16_t)0,
                 (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0
             );
-        } 
+        }
     });
 }
-
 */
 
-
 } // close anonymous namespace
-
-
-
-
 
 //========================================================================================================================//
 //                                        //PASSES POINTERS
 //========================================================================================================================//
 
-
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createCheckStructurePass() {
     CheckStructurePass *pass = new CheckStructurePass();
-    return std::unique_ptr<Pass>(pass);}
- //===============================================================================//
+    return std::unique_ptr<Pass>(pass);
+}
+//===============================================================================//
 std::unique_ptr<::mlir::Pass> createCheckUcodePass() {
     CheckUcodePass *pass = new CheckUcodePass();
-    return std::unique_ptr<Pass>(pass);}
-
+    return std::unique_ptr<Pass>(pass);
+}
 
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createCheckDependancyPass() {
     CheckDependancyPass *pass = new CheckDependancyPass();
-    return std::unique_ptr<Pass>(pass);}
-
+    return std::unique_ptr<Pass>(pass);
+}
 
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createTransformUcodeToLoadOpPass() {
     TransformUcodeToLoadOpPass *pass = new TransformUcodeToLoadOpPass();
-    return std::unique_ptr<Pass>(pass);}
-
-
+    return std::unique_ptr<Pass>(pass);
+}
 
 //===============================================================================//
 std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     TransformGeneralStructurePass *pass = new TransformGeneralStructurePass();
-    return std::unique_ptr<Pass>(pass);}
-
+    return std::unique_ptr<Pass>(pass);
+}
 //===============================================================================//
 //std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass() {
-   // TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
-   // return std::unique_ptr<Pass>(pass);}    
+//    TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
+//    return std::unique_ptr<Pass>(pass);
+//}
 
-
-
-
-
-
-
-//========================================================================================================//                                                   
-}                                                                            // close mlir::vta
-}                                                                            // close mlir
+//========================================================================================================//
+} // close mlir::vta
+} // close namespace mlir

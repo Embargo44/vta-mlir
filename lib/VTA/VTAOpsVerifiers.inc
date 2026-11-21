@@ -274,58 +274,49 @@ LogicalResult StoreNoOp::verify() {
 
 
 LogicalResult AluMinImmOp::verify() {
-    // return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluMaxImmOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluAddImmOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluShfImmOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluMulImmOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluMinOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluMaxOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluAddOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 LogicalResult AluShfOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
+    
 }
 
 LogicalResult AluMulOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
+    
 }
 
 LogicalResult AluNoOp::verify() {
-    //return verifyAlu(*this);
-    return success();
+    return verifyAlu(*this);
 }
 
 

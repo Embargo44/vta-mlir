@@ -69,12 +69,7 @@ struct TransformGeneralStructurePass : public TransformGeneralStructureBase<Tran
     void runOnOperation() override;
 };
 
-//Inserts a dummy ACC load before finish to wait for the store core.
-/*
-struct TransformInsertDummyFinishLoadPass : public TransformInsertDummyFinishLoadBase<TransformInsertDummyFinishLoadPass> {
-    void runOnOperation() override;
-};
-*/
+
 
 //========================================================================================================================//
 //                                        //PASSES FUNCTIONALITY
@@ -484,52 +479,7 @@ void TransformGeneralStructurePass::runOnOperation() {
         signalPassFailure();
 }
 
-//===============================================================================//
-//Inserts a dummy ACC load before finish to wait for the store core.
-/*
-void TransformInsertDummyFinishLoadPass::runOnOperation() {
-    ModuleOp module = getOperation();
 
-    module.walk([&](vta::FuncOp funcOp) {
-        Block &body = funcOp.getBody().front();
-
-        // Find the finish op (which is the terminator)
-        Operation *finishOp = body.getTerminator();
-        if (!isa<vta::FinishOp>(finishOp)) return;
-
-        // Look at the op right before finish
-        Operation *prevOp = finishOp->getPrevNode();
-        if (!prevOp) return;
-
-        // If it's a Store, ensure it has PushPrevDep = true
-        if (auto storeOp = dyn_cast<vta::StoreOp>(prevOp)) {
-            OpBuilder builder(storeOp);
-            auto newStore = builder.create<vta::StoreOp>(
-                storeOp.getLoc(),
-                storeOp.getPopPrevDep(), storeOp.getPopNextDep(),
-                true,                     // <--- 3rd arg: pushPrevDep = true
-                storeOp.getPushNextDep(), // <--- 4th arg: keep original
-                storeOp.getMemoryType(), storeOp.getSramBase(), storeOp.getDramBase(),
-                storeOp.getYSize(), storeOp.getXSize(), storeOp.getXStride(),
-                storeOp.getYPad0(), storeOp.getYPad1(), storeOp.getXPad0(), storeOp.getXPad1()
-            );
-            storeOp.erase();
-
-            // Insert the dummy load after the new store, before finish
-            OpBuilder dummyBuilder(newStore);
-            dummyBuilder.setInsertionPointAfter(newStore);
-            dummyBuilder.create<vta::LoadOp>(
-                newStore.getLoc(),
-                false, true, false, false, // <--- 2nd arg: popNextDep = true
-                (uint8_t)3, // VTA_MEM_ACC
-                (uint16_t)0, (uint32_t)0,
-                (uint16_t)0, (uint16_t)0, (uint16_t)0,
-                (uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)0
-            );
-        }
-    });
-}
-*/
 
 } // close anonymous namespace
 
@@ -565,11 +515,6 @@ std::unique_ptr<::mlir::Pass> createTransformGeneralStructurePass() {
     TransformGeneralStructurePass *pass = new TransformGeneralStructurePass();
     return std::unique_ptr<Pass>(pass);
 }
-//===============================================================================//
-//std::unique_ptr<::mlir::Pass> createTransformInsertDummyFinishLoadPass() {
-//    TransformInsertDummyFinishLoadPass *pass = new TransformInsertDummyFinishLoadPass();
-//    return std::unique_ptr<Pass>(pass);
-//}
 
 //========================================================================================================//
 } // close mlir::vta

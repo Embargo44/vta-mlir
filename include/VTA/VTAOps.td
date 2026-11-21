@@ -702,7 +702,7 @@ def TransformUcodeToLoadOp : Pass<"vta-transform-ucode-to-loadop", "ModuleOp"> {
 
 def TransformGeneralStructure : Pass<"vta-transform-general-structure", "ModuleOp"> {}
 
-//def TransformInsertDummyFinishLoad : Pass<"vta-insert-dummy-finish-load", "ModuleOp"> {}
+
 
 
 
